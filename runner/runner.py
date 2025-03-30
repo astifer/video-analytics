@@ -3,6 +3,7 @@ import requests
 from PIL import Image
 import io
 import numpy as np
+import time
 
 STREAM_URL = "https://s35.ipcamlive.com/streams/23fmhujpncmqvpew3/stream.m3u8"
 
@@ -52,3 +53,8 @@ def run():
         
     cap.release()
     cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    while True:
+        print('Im alive')
+        time.sleep(5)
