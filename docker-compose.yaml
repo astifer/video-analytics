@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: api_service
+    ports:
+      - "8000:8000"
+    depends_on:
+      - inference
+    environment:
+      - INFERENCE_URL=http://inference:8001/inference/
+
+  inference:
+    build:
+      context: ./inference
+      dockerfile: Dockerfile
+    container_name: inference_service
+    ports:
+      - "8001:8001"
+
+  runner:
+    build:
+      context: ./runner
+      dockerfile: Dockerfile
+    container_name: runner_service
+    depends_on:
+      - inference
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: orchestrator
+    ports:
+      - "1612:1612"
+    depends_on:
+      - inference
+      - runner
+      - api

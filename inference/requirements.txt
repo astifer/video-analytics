@@ -1,0 +1,11 @@
+fastapi==0.115.12
+uvicorn==0.34.0
+pillow==11.1.0
+numpy==2.1.1
+opencv-python==4.11.0.86
+torchvision==0.21.0
+transformers==4.50.0
+ultralytics==8.3.94
+ultralytics-thop==2.0.14
+starlette==0.46.1
+torch==2.6.0
