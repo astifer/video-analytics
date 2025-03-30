@@ -16,6 +16,11 @@ docker-compose up --build
 ### Структура
 ```
 project/
+├── orchestrator/
+│   ├── orchestrator.py
+│   ├── models.py
+│   ├── Dockerfile
+|   └── requirements.txt
 ├── api/
 │   ├── main.py
 │   ├── Dockerfile
@@ -31,3 +36,7 @@ project/
 |   └── requirements.txt
 └── docker-compose.yml
 ```
+
+### Chart
+
+![img](./video-analytics.png)
