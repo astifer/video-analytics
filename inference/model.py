@@ -20,7 +20,7 @@ def get_bb(image: Image):
     results = image_processor.post_process_object_detection(outputs, threshold=0.2, target_sizes=target_sizes)[0]
     ress = []
     for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
-        box = [round(i, 2) for i in box.tolist()]
+        box = [round(i) for i in box.tolist()]
         item = model.config.id2label[label.item()]
 
         ress.append({'label': item, 'bb': box})

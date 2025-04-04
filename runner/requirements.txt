@@ -3,3 +3,6 @@ requests==2.32.3
 numpy==2.1.1
 pillow==11.1.0
 python-multipart
+fastapi
+uvicorn==0.34.0
+httpx

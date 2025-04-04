@@ -1,20 +1,29 @@
 from fastapi import FastAPI, HTTPException
+
 from pydantic import BaseModel
 from enum import Enum
 from uuid import uuid4
 from typing import Dict
 from models import Scenario, ScenarioCreate, ScenarioStatus, ScenarioUpdate, PredictionResult, is_transition_allowed
+import logging
+import requests
 
+import time
+
+RUNNER_URL = "http://runner_service:7878"
+logger = logging.getLogger(__name__)
 app = FastAPI(title="Orchestrator Service")
 
 scenarios: Dict[str, Scenario] = {}
 predictions: Dict[str, PredictionResult] = {}
 
+
 @app.post("/scenario/", response_model=Scenario)
 async def create_scenario(scenario_data: ScenarioCreate):
     scenario_id = str(uuid4())
-    scenario = Scenario(id=scenario_id, status=scenario_data.initial_status)
+    scenario = Scenario(id=scenario_id, status=ScenarioStatus.init_startup)
     scenarios[scenario_id] = scenario
+
     return scenario
 
 @app.post("/scenario/{scenario_id}/", response_model=Scenario)
@@ -25,6 +34,12 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
     current_status = scenarios[scenario_id].status
     new_status = update.new_status
 
+    if new_status == current_status:
+        raise HTTPException(
+            status_code=302,
+            detail=f"Scenario already has this status"
+        )
+    
     if not is_transition_allowed(current_status, new_status):
         raise HTTPException(
             status_code=400,
@@ -32,6 +47,12 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         )
     
     scenarios[scenario_id].status = new_status
+
+    if new_status == ScenarioStatus.active:
+        response_from_runner = requests.get(f"{RUNNER_URL}/status/")
+        predictions = requests.post(f"{RUNNER_URL}/process-stream/")
+        
+
     return scenarios[scenario_id]
 
 @app.get("/scenario/{scenario_id}/", response_model=Scenario)
@@ -39,6 +60,7 @@ async def get_scenario(scenario_id: str):
     if scenario_id not in scenarios:
         raise HTTPException(status_code=404, detail="Scenario not found")
     return scenarios[scenario_id]
+
 
 if __name__ == "__main__":
     import uvicorn

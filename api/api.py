@@ -3,6 +3,9 @@ from pydantic import BaseModel
 from enum import Enum
 import requests
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Video Analytics API")
 
@@ -24,22 +27,28 @@ class ScenarioUpdate(BaseModel):
 
 @app.post("/scenario/")
 async def create_scenario(scenario_data: ScenarioCreate):
-    response = requests.post(f"{ORCHESTRATOR_URL}/scenario/", json=scenario_data.dict())
+    logger.info(f"[create_scenario] argument is {scenario_data}")
+    response = requests.post(f"{ORCHESTRATOR_URL}/scenario/", json=scenario_data.model_dump())
     if response.status_code != 200:
+        logger.error(f"[create_scenario] response from ORCHESTRATOR is not OK: {response.text}")
         raise HTTPException(status_code=response.status_code, detail=response.text)
     return response.json()
 
 @app.post("/scenario/{scenario_id}/")
 async def update_scenario(scenario_id: str, update: ScenarioUpdate):
-    response = requests.post(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/", json=update.dict())
+    logger.info(f"[update_scenario] arguments are {scenario_id}, {update}")
+    response = requests.post(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/", json=update.model_dump())
     if response.status_code != 200:
+        logger.error(f"[update_scenario] response from ORCHESTRATOR is not OK: {response.text}")
         raise HTTPException(status_code=response.status_code, detail=response.text)
     return response.json()
 
 @app.get("/scenario/{scenario_id}/")
 async def get_scenario(scenario_id: str):
+    logger.info(f"[get_scenario] argument is {scenario_id}")
     response = requests.get(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/")
     if response.status_code != 200:
+        logger.error(f"[get_scenario] response from ORCHESTRATOR is not OK: {response.text}")
         raise HTTPException(status_code=response.status_code, detail=response.text)
     return response.json()
 

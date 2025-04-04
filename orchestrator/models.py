@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from enum import Enum
 
 class ScenarioStatus(str, Enum):
@@ -14,6 +14,7 @@ class ScenarioStatus(str, Enum):
 ALLOWED_TRANSITIONS = {
     ScenarioStatus.init_startup: [ScenarioStatus.in_startup_processing],
     ScenarioStatus.in_startup_processing: [ScenarioStatus.active],
+    ScenarioStatus.active: [ScenarioStatus.init_shutdown],
     ScenarioStatus.init_shutdown: [ScenarioStatus.in_shutdown_processing],
     ScenarioStatus.in_shutdown_processing: [ScenarioStatus.inactive]
 }
@@ -21,6 +22,7 @@ ALLOWED_TRANSITIONS = {
 class Scenario(BaseModel):
     id: str
     status: ScenarioStatus
+    data: dict = {}
 
 class ScenarioCreate(BaseModel):
     initial_status: ScenarioStatus
