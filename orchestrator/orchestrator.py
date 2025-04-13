@@ -6,7 +6,7 @@ from uuid import uuid4
 from typing import Dict
 from models import Scenario, ScenarioCreate, ScenarioStatus, ScenarioUpdate, PredictionResult, is_transition_allowed
 import logging
-import requests
+import aiohttp
 
 import time
 
@@ -23,7 +23,7 @@ async def create_scenario(scenario_data: ScenarioCreate):
     scenario_id = str(uuid4())
     scenario = Scenario(id=scenario_id, status=ScenarioStatus.init_startup)
     scenarios[scenario_id] = scenario
-
+    
     return scenario
 
 @app.post("/scenario/{scenario_id}/", response_model=Scenario)
@@ -49,11 +49,13 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
     scenarios[scenario_id].status = new_status
 
     if new_status == ScenarioStatus.active:
-        response_from_runner = requests.get(f"{RUNNER_URL}/status/")
-        predictions = requests.post(f"{RUNNER_URL}/process-stream/")
-        
 
-    return scenarios[scenario_id]
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{RUNNER_URL}/process-stream/") as response:
+                predictions = await response.json()
+
+                scenarios[scenario_id].data = predictions
+                return scenarios[scenario_id]
 
 @app.get("/scenario/{scenario_id}/", response_model=Scenario)
 async def get_scenario(scenario_id: str):

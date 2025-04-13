@@ -10,3 +10,4 @@ ultralytics-thop==2.0.14
 starlette==0.46.1
 torch==2.6.0
 python-multipart
+aiohttp

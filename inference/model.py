@@ -1,7 +1,6 @@
 from transformers import YolosImageProcessor, YolosForObjectDetection
 from PIL import Image
 import torch
-import requests
 
 model = YolosForObjectDetection.from_pretrained('hustvl/yolos-tiny')
 image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")

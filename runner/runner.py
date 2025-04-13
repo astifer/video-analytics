@@ -1,5 +1,4 @@
 import cv2
-import requests
 from PIL import Image
 import io
 import numpy as np
@@ -8,10 +7,17 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 import pydantic
 from pydantic import BaseModel
-import httpx
+import aiohttp
 from typing import Any
+import logging
 
 app = FastAPI(title="Runner Service")
+logger = logging.getLogger(__name__)
+
+# dict for start and shutdosn isntances
+# topics in kafka
+# aiokafka new versions for non zookeeper
+
 
 class AliveResponse(BaseModel):
     status_code: int
@@ -19,7 +25,8 @@ class AliveResponse(BaseModel):
 class StreamResponse(BaseModel):
     content: Any
 
-STREAM_URL = "https://s35.ipcamlive.com/streams/23fmhujpncmqvpew3/stream.m3u8"
+STREAM_URL = "https://s46.ipcamlive.com/streams/2eulqgccb8zksexmj/stream.m3u8"
+INFERENCE_URl = "http://inference_service:8001"
 
 async def send_frame_to_inference(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -29,16 +36,25 @@ async def send_frame_to_inference(frame):
     pil_image.save(buf, format="JPEG")
     buf.seek(0)
 
-    files = {'file': ("frame.jpg", buf, "image/jpeg")}
+    form = aiohttp.FormData()
+    form.add_field(
+        name='file',
+        value=buf,
+        filename='frame.jpg',
+        content_type='image/jpeg'
+    )
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post("http://inference_service:8001/inference/", files=files)
-    
-    if response.status_code == 200:
-        return response.json()
-    return None
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f"{INFERENCE_URl}/inference/", data=form) as response:
+            res = await response.json()
+            if response.status != 200:
+                logger.error(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
+                return False
+            
+            return res
 
-def frame_stream(stream_url: str):
+async def frame_stream(stream_url: str):
+    # кажется тут упираемся в синхронность и ждем пока получим кадр
     cap = cv2.VideoCapture(stream_url)
 
     if not cap.isOpened():
@@ -48,8 +64,8 @@ def frame_stream(stream_url: str):
         while True:
             ret, frame = cap.read()
             if not ret:
-                continue  # Stream hiccup? Retry.
-            yield frame
+                continue  # Retry
+            return frame
     finally:
         cap.release()
 
@@ -73,14 +89,12 @@ def plot_boxes(frame, predictions):
     return frame
     
 @app.post("/process-stream/", response_model=StreamResponse)
-async def process_stream():
-    frame_gen = frame_stream(STREAM_URL)
+async def process_stream(data: Any = None):
+    frame = await frame_stream(STREAM_URL)
+    result = await send_frame_to_inference(frame)
 
-    for frame in frame_gen:
-        result = await send_frame_to_inference(frame)
-
-        if result is not None:
-            return JSONResponse(content=result)
+    if result:
+        return JSONResponse(content=result)
 
     return {"message": "No valid frame was processed"}
 

@@ -1,8 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from enum import Enum
-import requests
-import os
+import aiohttp
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,37 +26,43 @@ class ScenarioUpdate(BaseModel):
 
 @app.post("/scenario/")
 async def create_scenario(scenario_data: ScenarioCreate):
-    logger.info(f"[create_scenario] argument is {scenario_data}")
-    response = requests.post(f"{ORCHESTRATOR_URL}/scenario/", json=scenario_data.model_dump())
-    if response.status_code != 200:
-        logger.error(f"[create_scenario] response from ORCHESTRATOR is not OK: {response.text}")
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f"{ORCHESTRATOR_URL}/scenario/", json=scenario_data.model_dump()) as response:
+            res = await response.json()
+            if response.status != 200:
+                logger.error(f"[create_scenario] response from ORCHESTRATOR is not OK: {await response.text()}")
+                raise HTTPException(status_code=response.status, detail=await response.text())
+            return res
 
 @app.post("/scenario/{scenario_id}/")
 async def update_scenario(scenario_id: str, update: ScenarioUpdate):
-    logger.info(f"[update_scenario] arguments are {scenario_id}, {update}")
-    response = requests.post(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/", json=update.model_dump())
-    if response.status_code != 200:
-        logger.error(f"[update_scenario] response from ORCHESTRATOR is not OK: {response.text}")
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/", json=update.model_dump()) as response:
+            res = await response.json()
+            if response.status != 200:
+                logger.error(f"[update_scenario] response from ORCHESTRATOR is not OK: {await response.text()}")
+                raise HTTPException(status_code=response.status, detail=await response.text())
+            return res
 
 @app.get("/scenario/{scenario_id}/")
 async def get_scenario(scenario_id: str):
-    logger.info(f"[get_scenario] argument is {scenario_id}")
-    response = requests.get(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/")
-    if response.status_code != 200:
-        logger.error(f"[get_scenario] response from ORCHESTRATOR is not OK: {response.text}")
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/") as response:
+            res = await response.json()
+            if response.status != 200:
+                logger.error(f"[get_scenario] response from ORCHESTRATOR is not OK: {await response.text()}")
+                raise HTTPException(status_code=response.status, detail=await response.text())
+            return res
 
 @app.get("/prediction/{scenario_id}/")
 async def get_prediction(scenario_id: str):
-    response = requests.get(f"{ORCHESTRATOR_URL}/prediction/{scenario_id}/")
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{ORCHESTRATOR_URL}/prediction/{scenario_id}/") as response:
+            res = await response.json()
+            if response.status != 200:
+                logger.error(f"[get_prediction] response from ORCHESTRATOR is not OK: {await response.text()}")
+                raise HTTPException(status_code=response.status, detail=await response.text())
+            return res
 
 if __name__ == "__main__":
     import uvicorn
