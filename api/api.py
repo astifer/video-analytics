@@ -4,25 +4,15 @@ from enum import Enum
 import aiohttp
 import logging
 
-logger = logging.getLogger(__name__)
-
-app = FastAPI(title="Video Analytics API")
-
+from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+from shared.scenario_models import ScenarioStatus, ScenarioCreate, ScenarioUpdate
 ORCHESTRATOR_URL = "http://orchestrator:1612"
 
-class ScenarioStatus(str, Enum):
-    init_startup = "init_startup"
-    in_startup_processing = "in_startup_processing"
-    active = "active"
-    init_shutdown = "init_shutdown"
-    in_shutdown_processing = "in_shutdown_processing"
-    inactive = "inactive"
+logger = logging.getLogger(__name__)
+app = FastAPI(title="Video Analytics API")
 
-class ScenarioCreate(BaseModel):
-    initial_status: ScenarioStatus
-
-class ScenarioUpdate(BaseModel):
-    new_status: ScenarioStatus
+producer = KafkaProducerWrapper()
+consumer = KafkaConsumerWrapper('api', '1')
 
 @app.post("/scenario/")
 async def create_scenario(scenario_data: ScenarioCreate):

@@ -4,7 +4,10 @@ from pydantic import BaseModel
 from enum import Enum
 from uuid import uuid4
 from typing import Dict
-from models import Scenario, ScenarioCreate, ScenarioStatus, ScenarioUpdate, PredictionResult, is_transition_allowed
+
+from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+from shared.scenario_models import Scenario, ScenarioUpdate, ScenarioCreate, ScenarioStatus, PredictionResult, is_transition_allowed
+
 import logging
 import aiohttp
 

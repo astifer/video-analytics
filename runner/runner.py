@@ -11,6 +11,8 @@ import aiohttp
 from typing import Any
 import logging
 
+from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+
 app = FastAPI(title="Runner Service")
 logger = logging.getLogger(__name__)
 

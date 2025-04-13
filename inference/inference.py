@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List
 
 import io
+from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 
 app = FastAPI(title="Inference Service")
 

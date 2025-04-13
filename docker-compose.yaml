@@ -1,49 +1,115 @@
 version: '3.8'
 
 services:
-  inference:
-    build:
-      context: ./inference
-      dockerfile: Dockerfile
-    container_name: inference_service
+  # kafka
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: kafka
     ports:
-      - "8001:8001"
+      - "9092:9092"
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_NODE_ID=1
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    restart: unless-stopped
+
+
+  # postgres
+  pg_orchestrator:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${POSTGRESQL_DBNAME}
+      POSTGRES_USER: ${POSTGRESQL_USER}
+      POSTGRES_PASSWORD: ${POSTGRESQL_PASSWORD}
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+
+  pg_api:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${POSTGRESQL_DBNAME}
+      POSTGRES_USER: ${POSTGRESQL_USER}
+      POSTGRES_PASSWORD: ${POSTGRESQL_PASSWORD}
+    ports:
+      - "5434:5432"
+    restart: unless-stopped
+
+  pg_runner:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: api_db
+      POSTGRES_USER: api_user
+      POSTGRES_PASSWORD: api_pass
+    ports:
+      - "5435:5432"
+    restart: unless-stopped
+
+
+  # services
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: orchestrator
+    volumes:
+      - ./shared:/app/shared
+    ports:
+      - "1612:1612"
+    depends_on:
+      - kafka
+      - pg_orchestrator
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@pg_orchestrator:5432/${POSTGRESQL_DBNAME}
+    
 
   api:
     build:
       context: ./api
       dockerfile: Dockerfile
     container_name: api_service
+    volumes:
+      - ./shared:/app/shared
     ports:
       - "8000:8000"
     depends_on:
-      - inference
+      - kafka
+      - orchestrator
+      - pg_api
     environment:
-      - INFERENCE_URL=http://inference:8001/inference/
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@pg_api:5432/${POSTGRESQL_DBNAME}
+
 
   runner:
     build:
       context: ./runner
       dockerfile: Dockerfile
     container_name: runner_service
+    volumes:
+      - ./shared:/app/shared
     ports:
       - "7878:7878"
     depends_on:
+      - kafka
       - inference
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
 
-  orchestrator:
+
+  inference:
     build:
-      context: ./orchestrator
+      context: ./inference
       dockerfile: Dockerfile
-    container_name: orchestrator
+    container_name: inference_service
+    volumes:
+      - ./shared:/app/shared
     ports:
-      - "1612:1612"
-    depends_on:
-      - inference
-      - runner
-      - api
-
-    # pg-1 for orh
-
-    
-    # pg-2 for api
+      - "8001:8001"

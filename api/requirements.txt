@@ -3,3 +3,4 @@ uvicorn==0.34.0
 pydantic==2.11.1
 python-multipart
 aiohttp
+aiokafka
