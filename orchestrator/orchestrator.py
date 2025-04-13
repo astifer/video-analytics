@@ -7,22 +7,68 @@ from typing import Dict
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.scenario_models import Scenario, ScenarioUpdate, ScenarioCreate, ScenarioStatus, PredictionResult, is_transition_allowed
+from shared.utils import get_urls, Settings
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from contextlib import asynccontextmanager
 
 import logging
 import aiohttp
+import asyncio
 
 import time
 
-RUNNER_URL = "http://runner_service:7878"
+producer = KafkaProducerWrapper()
+consumer = KafkaConsumerWrapper(topic='api-to-orch-commands', group_id="orch-group")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize Kafka producer and consumer
+    await producer.start()
+    await consumer.start()
+
+    # Start background task to consume messages
+    consume_task = asyncio.create_task(consume_commands())
+
+    yield
+
+    await producer.stop()
+    await consumer.stop()
+    consume_task.cancel()
+    try:
+        await consume_task
+    except asyncio.CancelledError:
+        pass
+
+
+async def consume_commands():
+    async for message in consumer.get_messages():
+        print(f"[Orchestrator] Received command from API: {message.value}")
+
+
+public_urls = get_urls()
+settings = Settings()
+
+RUNNER_URL = public_urls.get("RUNNER_URL")
+
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Orchestrator Service")
+app = FastAPI(title="Orchestrator Service", lifespan=lifespan)
 
 scenarios: Dict[str, Scenario] = {}
 predictions: Dict[str, PredictionResult] = {}
 
+engine = create_async_engine(
+    settings.db_url,
+    pool_size=5,
+    max_overflow=2,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    echo=True,
+)
 
-@app.post("/scenario/", response_model=Scenario)
-async def create_scenario(scenario_data: ScenarioCreate):
+
+@app.post("/create_scenario/", response_model=Scenario)
+async def create_scenario():
     scenario_id = str(uuid4())
     scenario = Scenario(id=scenario_id, status=ScenarioStatus.init_startup)
     scenarios[scenario_id] = scenario

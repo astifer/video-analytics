@@ -1,0 +1,5 @@
+ORCHESTRATOR_URL: "http://orchestrator:1612"
+RUNNER_URL: "http://runner_service:7878"
+STREAM_URL: "https://s46.ipcamlive.com/streams/2eulqgccb8zksexmj/stream.m3u8"
+INFERENCE_URl: "http://inference_service:8001"
+API_URL: "http://api_service:8000"

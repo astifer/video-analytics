@@ -12,23 +12,22 @@ from typing import Any
 import logging
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+from shared.utils import get_urls
 
 app = FastAPI(title="Runner Service")
 logger = logging.getLogger(__name__)
 
+public_urls = get_urls()
+
 # dict for start and shutdosn isntances
-# topics in kafka
-# aiokafka new versions for non zookeeper
-
-
 class AliveResponse(BaseModel):
     status_code: int
 
 class StreamResponse(BaseModel):
     content: Any
 
-STREAM_URL = "https://s46.ipcamlive.com/streams/2eulqgccb8zksexmj/stream.m3u8"
-INFERENCE_URl = "http://inference_service:8001"
+STREAM_URL = public_urls.get("STREAM_URL")
+INFERENCE_URl = public_urls.get("INFERENCE_URl")
 
 async def send_frame_to_inference(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

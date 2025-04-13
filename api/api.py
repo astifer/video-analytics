@@ -6,18 +6,53 @@ import logging
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.scenario_models import ScenarioStatus, ScenarioCreate, ScenarioUpdate
-ORCHESTRATOR_URL = "http://orchestrator:1612"
+from shared.utils import get_urls
 
-logger = logging.getLogger(__name__)
-app = FastAPI(title="Video Analytics API")
+from contextlib import asynccontextmanager
+
+import asyncio
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize Kafka producer and consumer
+    await producer.start()
+    await consumer.start()
+
+    # Start background task to consume messages
+    consume_task = asyncio.create_task(consume_commands())
+
+    yield
+
+    await producer.stop()
+    await consumer.stop()
+    consume_task.cancel()
+    try:
+        await consume_task
+    except asyncio.CancelledError:
+        pass
+
+
+async def consume_commands():
+    async for message in consumer.get_messages():
+        print(f"[Orchestrator] Received command from API: {message.value}")
 
 producer = KafkaProducerWrapper()
-consumer = KafkaConsumerWrapper('api', '1')
+consumer = KafkaConsumerWrapper('orch-to-api-commands', 'api')
 
-@app.post("/scenario/")
-async def create_scenario(scenario_data: ScenarioCreate):
+public_urls = get_urls()
+ORCHESTRATOR_URL = public_urls.get("ORCHESTRATOR_URL")
+
+logger = logging.getLogger(__name__)
+app = FastAPI(title="Video Analytics API", lifespan=lifespan)
+
+
+@app.post("/create_scenario/")
+async def create_scenario():
+
+    producer.send('api-to-orch-commands', {'value': 'new'}, key='create_scenario')
+
     async with aiohttp.ClientSession() as session:
-        async with session.post(f"{ORCHESTRATOR_URL}/scenario/", json=scenario_data.model_dump()) as response:
+        async with session.post(f"{ORCHESTRATOR_URL}/scenario/", json={}) as response:
             res = await response.json()
             if response.status != 200:
                 logger.error(f"[create_scenario] response from ORCHESTRATOR is not OK: {await response.text()}")

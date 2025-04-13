@@ -6,3 +6,6 @@ fastapi
 uvicorn==0.34.0
 aiohttp
 aiokafka==0.12.0
+pyyaml
+pydantic
+pydantic-settings

@@ -9,4 +9,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "orchestrator:app", "--host", "0.0.0.0", "--port", "1612"]
+
+ENTRYPOINT ["uvicorn", "orchestrator:app", "--host", "0.0.0.0", "--port", "1612"]

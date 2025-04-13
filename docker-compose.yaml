@@ -23,30 +23,33 @@ services:
   # postgres
   pg_orchestrator:
     image: postgres:15
+    container_name: pg_orchestrator
     environment:
-      POSTGRES_DB: ${POSTGRESQL_DBNAME}
-      POSTGRES_USER: ${POSTGRESQL_USER}
-      POSTGRES_PASSWORD: ${POSTGRESQL_PASSWORD}
+      POSTGRES_DB: orchestrator_db
+      POSTGRES_USER: orchestrator_user
+      POSTGRES_PASSWORD: orchestrator_pass
     ports:
       - "5433:5432"
     restart: unless-stopped
 
   pg_api:
     image: postgres:15
+    container_name: pg_api
     environment:
-      POSTGRES_DB: ${POSTGRESQL_DBNAME}
-      POSTGRES_USER: ${POSTGRESQL_USER}
-      POSTGRES_PASSWORD: ${POSTGRESQL_PASSWORD}
+      POSTGRES_DB: api_db
+      POSTGRES_USER: api_user
+      POSTGRES_PASSWORD: api_pass
     ports:
       - "5434:5432"
     restart: unless-stopped
 
   pg_runner:
     image: postgres:15
+    container_name: pg_runner
     environment:
-      POSTGRES_DB: api_db
-      POSTGRES_USER: api_user
-      POSTGRES_PASSWORD: api_pass
+      POSTGRES_DB: runner_db
+      POSTGRES_USER: runner_user
+      POSTGRES_PASSWORD: runner_pass
     ports:
       - "5435:5432"
     restart: unless-stopped
@@ -102,6 +105,7 @@ services:
       - inference
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@pg_api:5432/${POSTGRESQL_DBNAME}
 
 
   inference:
