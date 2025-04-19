@@ -69,9 +69,10 @@ services:
       - kafka
       - pg_orchestrator
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@pg_orchestrator:5432/${POSTGRESQL_DBNAME}
-    
+      POSTGRES_DB: orchestrator_db
+      POSTGRES_USER: orchestrator_user
+      POSTGRES_PASSWORD: orchestrator_pass
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   api:
     build:
@@ -87,8 +88,10 @@ services:
       - orchestrator
       - pg_api
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@pg_api:5432/${POSTGRESQL_DBNAME}
+      POSTGRES_DB: api_db
+      POSTGRES_USER: api_user
+      POSTGRES_PASSWORD: api_pass
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
 
   runner:
@@ -104,9 +107,10 @@ services:
       - kafka
       - inference
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@pg_api:5432/${POSTGRESQL_DBNAME}
-
+      POSTGRES_DB: runner_db
+      POSTGRES_USER: runner_user
+      POSTGRES_PASSWORD: runner_pass
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   inference:
     build:

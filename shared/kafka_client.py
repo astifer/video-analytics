@@ -87,4 +87,3 @@ class KafkaConsumerWrapper:
         if self._consumer:
             await self._consumer.stop()
             logger.info("Kafka consumer stopped")
-            self._consumer = None

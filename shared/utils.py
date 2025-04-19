@@ -1,6 +1,7 @@
 import yaml
 from typing import Dict
 from pydantic_settings import BaseSettings
+import os
 
 def get_urls() -> Dict[str, str]:
     with open('/app/shared/public_urls.yaml', 'r') as f:
@@ -9,17 +10,14 @@ def get_urls() -> Dict[str, str]:
     return data
 
 class Settings(BaseSettings):
-    POSTGRESQL_HOST: str
-    POSTGRESQL_PORT: int = 5432
-    POSTGRESQL_USER: str
-    POSTGRESQL_PASSWORD: str
-    POSTGRESQL_DBNAME: str
+    POSTGRES_HOST: str = os.environ.get("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT: int =  os.environ.get("POSTGRES_PORT", 5432)
+    POSTGRES_USER: str =  os.environ.get("POSTGRES_USER", "user")
+    POSTGRES_PASSWORD: str =  os.environ.get("POSTGRES_PASSWORD", "none")
+    POSTGRES_DB: str =  os.environ.get("POSTGRES_DB", "db_name")
 
     @property
     def db_url(self):
-        return (
-f"postgresql+asyncpg://{self.POSTGRESQL_USER}:{self.POSTGRESQL_PASSWORD}@localhost:{self.POSTGRESQL_PORT}/{self.POSTGRESQL_DBNAME}"
-        )
-
-    class Config:
-        env_file = ".env"
+            return (
+    f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            )

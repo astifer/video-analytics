@@ -12,12 +12,39 @@ from typing import Any
 import logging
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
-from shared.utils import get_urls
+from shared.utils import get_urls, Settings
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Runner Service")
-logger = logging.getLogger(__name__)
+
+producer = KafkaProducerWrapper()
+consumer = KafkaConsumerWrapper(topic='orch-to-runner-commands', group_id="orch-group")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global session
+
+    # если не пишем await, то будет просто инстанцирование(не вызов)
+    session = aiohttp.ClientSession()
+
+    # Startup: Initialize Kafka producer and consumer
+    await producer.start()
+    await consumer.start()
+
+    yield
+
+    await producer.stop()
+    await consumer.stop()
+    await session.close()
+
 
 public_urls = get_urls()
+STREAM_URL = public_urls.get("STREAM_URL")
+INFERENCE_URL = public_urls.get("INFERENCE_URL")
+
+
+logger = logging.getLogger(__name__)
+app = FastAPI(title="Runner Service", lifespan=lifespan)
+
 
 # dict for start and shutdosn isntances
 class AliveResponse(BaseModel):
@@ -26,8 +53,6 @@ class AliveResponse(BaseModel):
 class StreamResponse(BaseModel):
     content: Any
 
-STREAM_URL = public_urls.get("STREAM_URL")
-INFERENCE_URl = public_urls.get("INFERENCE_URl")
 
 async def send_frame_to_inference(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -45,14 +70,13 @@ async def send_frame_to_inference(frame):
         content_type='image/jpeg'
     )
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(f"{INFERENCE_URl}/inference/", data=form) as response:
-            res = await response.json()
-            if response.status != 200:
-                logger.error(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
-                return False
-            
-            return res
+    async with session.post(f"{INFERENCE_URL}/inference/", data=form) as response:
+        res = await response.json()
+        if response.status != 200:
+            logger.error(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
+            return False
+        
+        return res
 
 async def frame_stream(stream_url: str):
     # кажется тут упираемся в синхронность и ждем пока получим кадр

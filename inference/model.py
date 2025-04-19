@@ -1,12 +1,21 @@
 from transformers import YolosImageProcessor, YolosForObjectDetection
 from PIL import Image
 import torch
+from dataclasses import dataclass
+from typing import List
+from pydantic import BaseModel
 
 model = YolosForObjectDetection.from_pretrained('hustvl/yolos-tiny')
 image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
 
+class PredictedObject(BaseModel):
+    label: str
+    bb: List[int]
 
-def get_bb(image: Image):
+class PredictionResult(BaseModel):
+    prediction: List[PredictedObject]
+
+async def get_bb(image: Image) -> List[PredictedObject]:
     inputs = image_processor(images=image, return_tensors="pt")
     outputs = model(**inputs)
 
@@ -22,6 +31,6 @@ def get_bb(image: Image):
         box = [round(i) for i in box.tolist()]
         item = model.config.id2label[label.item()]
 
-        ress.append({'label': item, 'bb': box})
+        ress.append(PredictedObject(label=item, bb=box))
 
     return ress

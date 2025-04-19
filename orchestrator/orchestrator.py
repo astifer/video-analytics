@@ -23,27 +23,20 @@ consumer = KafkaConsumerWrapper(topic='api-to-orch-commands', group_id="orch-gro
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global session
+
+    # если не пишем await, то будет просто инстанцирование(не вызов)
+    session = aiohttp.ClientSession()
+
     # Startup: Initialize Kafka producer and consumer
     await producer.start()
     await consumer.start()
-
-    # Start background task to consume messages
-    consume_task = asyncio.create_task(consume_commands())
 
     yield
 
     await producer.stop()
     await consumer.stop()
-    consume_task.cancel()
-    try:
-        await consume_task
-    except asyncio.CancelledError:
-        pass
-
-
-async def consume_commands():
-    async for message in consumer.get_messages():
-        print(f"[Orchestrator] Received command from API: {message.value}")
+    await session.close()
 
 
 public_urls = get_urls()
@@ -98,13 +91,11 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
     scenarios[scenario_id].status = new_status
 
     if new_status == ScenarioStatus.active:
+        async with session.post(f"{RUNNER_URL}/process-stream/") as response:
+            predictions = await response.json()
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"{RUNNER_URL}/process-stream/") as response:
-                predictions = await response.json()
-
-                scenarios[scenario_id].data = predictions
-                return scenarios[scenario_id]
+            scenarios[scenario_id].data = predictions
+            return scenarios[scenario_id]
 
 @app.get("/scenario/{scenario_id}/", response_model=Scenario)
 async def get_scenario(scenario_id: str):
