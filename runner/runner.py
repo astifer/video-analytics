@@ -10,6 +10,8 @@ from pydantic import BaseModel
 import aiohttp
 from typing import Any
 import logging
+import json
+import asyncio
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.utils import get_urls, Settings
@@ -17,18 +19,21 @@ from contextlib import asynccontextmanager
 
 
 producer = KafkaProducerWrapper()
-consumer = KafkaConsumerWrapper(topic='orch-to-runner-commands', group_id="orch-group")
+consumer = KafkaConsumerWrapper(topic='orch-to-runner-commands', group_id="runner-group")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global session
 
-    # если не пишем await, то будет просто инстанцирование(не вызов)
+    # Initialize HTTP session
     session = aiohttp.ClientSession()
 
-    # Startup: Initialize Kafka producer and consumer
+    # Initialize Kafka components
     await producer.start()
     await consumer.start()
+
+    # Start Kafka consumer loop
+    asyncio.create_task(consume_messages())
 
     yield
 
@@ -46,13 +51,49 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Runner Service", lifespan=lifespan)
 
 
-# dict for start and shutdosn isntances
+# dict for start and shutdown instances
 class AliveResponse(BaseModel):
     status_code: int
 
 class StreamResponse(BaseModel):
     content: Any
 
+
+async def consume_messages():
+    """Consume messages from Kafka and process them."""
+    while True:
+        try:
+            message = await consumer.get_message()
+            if message:
+                await process_message(message)
+        except Exception as e:
+            logger.error(f"Error consuming message: {str(e)}")
+        await asyncio.sleep(0.1)
+
+async def process_message(message):
+    """Process a message from the outbox."""
+    try:
+        data = json.loads(message.value)
+        message_type = data.get('message_type')
+        payload = data.get('payload')
+        
+        if message_type == 'runner_process_stream':
+            # Process the stream as requested
+            scenario_id = payload.get('scenario_id')
+            if scenario_id:
+                result = await process_stream()
+                # Send result back to orchestrator
+                await producer.send_message(
+                    topic='runner-to-orch-results',
+                    value=json.dumps({
+                        'scenario_id': scenario_id,
+                        'result': result
+                    })
+                )
+        else:
+            logger.warning(f"Unknown message type: {message_type}")
+    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
 
 async def send_frame_to_inference(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

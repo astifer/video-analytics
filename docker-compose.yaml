@@ -69,6 +69,8 @@ services:
       - kafka
       - pg_orchestrator
     environment:
+      POSTGRES_HOST: pg_orchestrator
+      POSTGRES_PORT: 5432
       POSTGRES_DB: orchestrator_db
       POSTGRES_USER: orchestrator_user
       POSTGRES_PASSWORD: orchestrator_pass
