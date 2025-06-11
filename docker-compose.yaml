@@ -67,9 +67,8 @@ services:
       - "1612:1612"
     depends_on:
       - kafka
-      - pg_orchestrator
+      # - pg_orchestrator
     environment:
-      POSTGRES_HOST: pg_orchestrator
       POSTGRES_PORT: 5432
       POSTGRES_DB: orchestrator_db
       POSTGRES_USER: orchestrator_user

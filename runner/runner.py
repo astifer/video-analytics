@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 
 
 producer = KafkaProducerWrapper()
-consumer = KafkaConsumerWrapper(topic='orch-to-runner-commands', group_id="runner-group")
+consumer = KafkaConsumerWrapper(topic='orchestrator-to-runner', group_id="runner")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -63,6 +63,7 @@ async def consume_messages():
     """Consume messages from Kafka and process them."""
     while True:
         try:
+            break
             message = await consumer.get_message()
             if message:
                 await process_message(message)
@@ -72,6 +73,7 @@ async def consume_messages():
 
 async def process_message(message):
     """Process a message from the outbox."""
+    return
     try:
         data = json.loads(message.value)
         message_type = data.get('message_type')

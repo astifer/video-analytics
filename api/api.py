@@ -1,18 +1,20 @@
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
-from enum import Enum
-import aiohttp
+from fastapi import FastAPI, HTTPException
 import logging
 import json
+import uuid
 
-from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
-from shared.scenario_models import ScenarioStatus, ScenarioCreate, ScenarioUpdate
-from shared.utils import get_urls, Settings
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from contextlib import asynccontextmanager
-
+import aiohttp
 import asyncio
+
+from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+from shared.scenario_models import ScenarioStatus, ScenarioCreate, ScenarioUpdate, MyMessage
+
+from shared.utils import get_urls, Settings
+from shared.transactional_outbox import OutboxManager
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,7 +28,7 @@ async def lifespan(app: FastAPI):
     await consumer.start()
 
     # Start Kafka consumer loop
-    asyncio.create_task(consume_messages())
+    # asyncio.create_task(consume_messages())
 
     yield
 
@@ -35,109 +37,63 @@ async def lifespan(app: FastAPI):
     await consumer.stop()
 
 producer = KafkaProducerWrapper()
-consumer = KafkaConsumerWrapper('orch-to-api-commands', 'api')
+consumer = KafkaConsumerWrapper('api-to-orchestrator', 'api')
 
 public_urls = get_urls()
-ORCHESTRATOR_URL = public_urls.get("ORCHESTRATOR_URL")
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-engine = create_async_engine(
-    settings.db_url,
-    pool_size=5,
-    max_overflow=2,
-    pool_pre_ping=True,
-    pool_recycle=1800,
-    echo=True,
-)
-
 app = FastAPI(title="Video Analytics API", lifespan=lifespan)
+outbox_manager = OutboxManager(db_url=settings.db_url, kafka_producer=producer, retry_count=3)
 
-async def consume_messages():
-    """Consume messages from Kafka and process them."""
-    while True:
-        try:
-            message = await consumer.get_message()
-            if message:
-                await process_message(message)
-        except Exception as e:
-            logger.error(f"Error consuming message: {str(e)}")
-        await asyncio.sleep(0.1)
-
-async def process_message(message):
-    """Process a message from the outbox."""
-    try:
-        data = json.loads(message.value)
-        message_type = data.get('message_type')
-        payload = data.get('payload')
-        
-        if message_type == 'scenario_created':
-            # Handle scenario creation notification
-            logger.info(f"Received scenario creation notification: {payload}")
-        elif message_type == 'scenario_status_updated':
-            # Handle scenario status update notification
-            logger.info(f"Received scenario status update: {payload}")
-        elif message_type == 'prediction_results':
-            # Handle prediction results notification
-            logger.info(f"Received prediction results: {payload}")
-        else:
-            logger.warning(f"Unknown message type: {message_type}")
-    except Exception as e:
-        logger.error(f"Error processing message: {str(e)}")
-
-@app.post("/create_scenario/")
+@app.post("/scenario/")
 async def create_scenario():
-    # Send command to orchestrator
-    await producer.send_message(
-        topic='api-to-orch-commands',
-        value=json.dumps({'command': 'create_scenario'})
-    )
+    message_id = uuid.uuid1().hex
+    scenario_id = uuid.uuid1().hex
 
-    # Wait for response from orchestrator
-    async with session.post(f"{ORCHESTRATOR_URL}/create_scenario/") as response:
-        res = await response.json()
-        if response.status != 200:
-            logger.error(f"[create_scenario] response from ORCHESTRATOR is not OK: {await response.text()}")
-            raise HTTPException(status_code=response.status, detail=await response.text())
-        return res
+    message = MyMessage( 
+        message_id=message_id, 
+        sender='api', 
+        to='orchestrator', 
+        scenario=None, 
+        payload={"scenario_id": scenario_id, "target": 'init_scenario'}
+    )
+    await outbox_manager.save_message(message.model_dump())
+
+    return {"status": 200, "scenario_id": scenario_id}
 
 @app.post("/scenario/{scenario_id}/")
 async def update_scenario(scenario_id: str, update: ScenarioUpdate):
-    # Send command to orchestrator
-    await producer.send_message(
-        topic='api-to-orch-commands',
-        value=json.dumps({
-            'command': 'update_scenario',
-            'scenario_id': scenario_id,
-            'update': update.model_dump()
-        })
-    )
 
-    async with session.post(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/", json=update.model_dump()) as response:
-        res = await response.json()
-        if response.status != 200:
-            logger.error(f"[update_scenario] response from ORCHESTRATOR is not OK: {await response.text()}")
-            raise HTTPException(status_code=response.status, detail=await response.text())
-        return res
+    message_id = uuid.uuid1().hex
+    message = MyMessage( 
+        message_id=message_id, 
+        sender='api', 
+        to='orchestrator', 
+        payload= {"scenario_id": scenario_id, "target": 'update_scenario', "update": update.model_dump()}
+    )
+    await outbox_manager.save_message(message.model_dump())
+
+    return {"status": 200, "scenario_id": scenario_id, "new_status": update.new_status}
 
 @app.get("/scenario/{scenario_id}/")
 async def get_scenario(scenario_id: str):
-    async with session.get(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/") as response:
-        res = await response.json()
-        if response.status != 200:
-            logger.error(f"[get_scenario] response from ORCHESTRATOR is not OK: {await response.text()}")
-            raise HTTPException(status_code=response.status, detail=await response.text())
-        return res
+    message_id = uuid.uuid1().hex
+    message = MyMessage(
+        message_id=message_id,
+        sender='api',
+        to='orchestrator',
+        payload={"scenario_id": scenario_id, "target": 'get_scenario'}
+    )
+    await outbox_manager.save_message(message.model_dump())
+
+    return {"status": 200}
+
 
 @app.get("/prediction/{scenario_id}/")
 async def get_prediction(scenario_id: str):
-    async with session.get(f"{ORCHESTRATOR_URL}/prediction/{scenario_id}/") as response:
-        res = await response.json()
-        if response.status != 200:
-            logger.error(f"[get_prediction] response from ORCHESTRATOR is not OK: {await response.text()}")
-            raise HTTPException(status_code=response.status, detail=await response.text())
-        return res
+    return {"status": 200}
 
 if __name__ == "__main__":
     import uvicorn

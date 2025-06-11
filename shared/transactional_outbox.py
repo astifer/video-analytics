@@ -1,151 +1,77 @@
 from sqlalchemy import Column, String, JSON, DateTime, Integer, create_engine, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy import select
+
 from datetime import datetime
 import json
 import asyncio
 from typing import Any, Dict, Optional
 import logging
 import aiohttp
-from .status_models import MessageStatus, MessageType
+import uuid
+
+from .status_models import MessageStatus
+from .scenario_models import Scenario
+from .utils import Settings
+from .kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+
 
 Base = declarative_base()
+settings = Settings()
+
 
 class OutboxMessage(Base):
     __tablename__ = 'outbox_messages'
 
     id = Column(Integer, primary_key=True)
-    message_type = Column(SQLEnum(MessageType), nullable=False)
-    payload = Column(JSON, nullable=False)
+    message_id = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False) # all info we needed, eg `result` or `type`
     status = Column(SQLEnum(MessageStatus), nullable=False, default=MessageStatus.PENDING)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.now(tz=settings.time_zone))
     processed_at = Column(DateTime, nullable=True)
-    retry_count = Column(Integer, default=0)
-    error = Column(String, nullable=True)
-    result = Column(JSON, nullable=True)
+    retry_count = Column(Integer, default=3)
+    error = Column(String, default='None')
+    from_service = Column(String, nullable=False) 
     target_service = Column(String, nullable=False)  # 'api' or 'runner'
 
 class OutboxManager:
-    def __init__(self, db_url: str, kafka_producer=None, runner_url: str = None, retry_count: int = 3):
+    def __init__(self, db_url: str, kafka_producer: KafkaProducerWrapper = None, retry_count: int = 3):
         self.engine = create_engine(db_url)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
+
         self.kafka_producer = kafka_producer
-        self.runner_url = runner_url
         self.logger = logging.getLogger(__name__)
         self.retry_count = retry_count
 
-    async def save_message(self, message_type: MessageType, payload: Dict[str, Any], target_service: str) -> None:
+    async def save_message(self, message: Dict[str, Any]) -> None:
         """Save a message to the outbox table."""
         session = self.Session()
+
+        message_id = message.get("message_id", None)
+        if not message_id:
+            message_id = uuid.uuid1().hex
+        payload = message.get("payload", {})
+        target_service = message.get("target_service") or message.get("to")
+        from_service = message.get("from_service") or message.get("from") or message.get("sender")
+
         try:
             message = OutboxMessage(
-                message_type=message_type,
+                message_id=message_id,
                 payload=payload,
                 status=MessageStatus.PENDING,
-                target_service=target_service
+                from_service=from_service,
+                target_service=target_service,
             )
             session.add(message)
             session.commit()
-            self.logger.info(f"Saved message to outbox: {message_type} for {target_service}")
+            self.logger.info(f"Saved message to outbox for {target_service}")
         except Exception as e:
             session.rollback()
             self.logger.error(f"Error saving message to outbox: {str(e)}")
             raise
-        finally:
-            session.close()
-
-    async def process_pending_messages(self) -> None:
-        """Process all pending messages in the outbox."""
-        session = self.Session()
-        try:
-            pending_messages = session.query(OutboxMessage).filter(
-                OutboxMessage.status == MessageStatus.PENDING
-            ).all()
-
-            for message in pending_messages:
-                try:
-                    message.status = MessageStatus.PROCESSING
-                    session.commit()
-
-                    if message.target_service == 'api':
-                        await self._process_api_message(message, session)
-                    elif message.target_service == 'runner':
-                        await self._process_runner_message(message, session)
-                    else:
-                        raise ValueError(f"Unknown target service: {message.target_service}")
-
-                except Exception as e:
-                    message.retry_count += 1
-                    message.error = str(e)
-                    
-                    if message.retry_count >= self.retry_count:
-                        message.status = MessageStatus.FAILED
-                    
-                    session.commit()
-                    self.logger.error(f"Error processing message {message.id}: {str(e)}")
-        finally:
-            session.close()
-
-    async def _process_api_message(self, message: OutboxMessage, session) -> None:
-        """Process a message for the API service."""
-        if not self.kafka_producer:
-            raise Exception("Kafka producer not configured")
-
-        await self.kafka_producer.send_message(
-            topic='orch-to-api-commands',
-            value=json.dumps({
-                "message_type": message.message_type,
-                "payload": message.payload,
-                "result": message.result,
-                "status": message.status,
-                "error": message.error,
-                "retry_count": message.retry_count,
-                "created_at": message.created_at.isoformat(),
-                "processed_at": message.processed_at.isoformat() if message.processed_at else None
-            })
-        )
-        message.status = MessageStatus.PROCESSED
-        message.processed_at = datetime.utcnow()
-        session.commit()
-        self.logger.info(f"Successfully processed API message {message.id}")
-
-    async def _process_runner_message(self, message: OutboxMessage, session) -> None:
-        """Process a message for the Runner service."""
-        if not self.kafka_producer:
-            raise Exception("Kafka producer not configured")
-
-        await self.kafka_producer.send_message(
-            topic='orch-to-runner-commands',
-            value=json.dumps({
-                "message_type": message.message_type,
-                "payload": message.payload,
-                "result": message.result,
-                "status": message.status,
-                "error": message.error,
-                "retry_count": message.retry_count,
-                "created_at": message.created_at.isoformat(),
-                "processed_at": message.processed_at.isoformat() if message.processed_at else None
-            })
-        )
-        message.status = MessageStatus.PROCESSED
-        message.processed_at = datetime.utcnow()
-        session.commit()
-        self.logger.info(f"Successfully processed Runner message {message.id}")
-
-    async def get_scenario_results(self, scenario_id: str) -> Optional[Dict[str, Any]]:
-        """Get the latest processed result for a scenario."""
-        session = self.Session()
-        try:
-            message = session.query(OutboxMessage).filter(
-                OutboxMessage.message_type == MessageType.RUNNER_PROCESS_STREAM,
-                OutboxMessage.payload['scenario_id'] == scenario_id,
-                OutboxMessage.status == MessageStatus.PROCESSED
-            ).order_by(OutboxMessage.processed_at.desc()).first()
-            
-            return message.result if message else None
-        finally:
-            session.close()
 
     async def start_processing_loop(self, interval_seconds: int = 5) -> None:
         """Start a background task to process pending messages."""
@@ -156,3 +82,69 @@ class OutboxManager:
                 self.logger.error(f"Error in processing loop: {str(e)}")
             
             await asyncio.sleep(interval_seconds)
+
+    async def process_pending_messages(self) -> None:
+        """Process all pending messages in the outbox."""
+        session = self.Session()
+        stmt = select(OutboxMessage).filter(
+            OutboxMessage.status == MessageStatus.PENDING
+        )
+        
+        result = await session.execute(stmt)
+        pending_messages = result.scalars().all()
+
+        for message in pending_messages:
+            # Nested transactions allow partial success (one failed message doesn't block others)
+            try:
+                async with session.begin_nested():
+                    message.status = MessageStatus.PROCESSING
+                    await session.flush()  # Flush immediately to lock row
+                
+                await self._process_message(message, session)
+
+            except Exception as e:
+                # Handle errors with nested transaction
+                async with session.begin_nested():
+                    message.retry_count += 1
+                    message.error = str(e)
+                    
+                    if message.retry_count >= self.retry_count:
+                        message.status = MessageStatus.FAILED
+                        message.error = f"Permanent failure: {e.__class__.__name__}"
+                    else:
+                        message.status = MessageStatus.PENDING  # Retry later
+                
+                self.logger.error(f"Error processing message {message.id}: {str(e)}")
+
+
+    async def _process_message(self, message: OutboxMessage, session) -> None:
+        """Process a message for some service."""
+        if not self.kafka_producer:
+            raise Exception(f"Kafka producer not configured in {self.__class__.__name__}")
+        
+        # Validate required fields
+        if not message.target_service:
+            raise ValueError("Message missing target_service")
+        if not message.from_service:
+            raise ValueError("Message missing from_service")
+        
+        # Prepare Kafka message
+        topic = f"{message.from_service}-to-{message.target_service}"
+        value = {
+            "message_id": message.message_id,
+            "payload": message.payload,
+            "created_at": message.created_at.isoformat(),
+            "processed_at": datetime.now(tz=settings.time_zone).isoformat()
+        }
+
+        # Send to Kafka with error handling
+        try:
+            await self.kafka_producer.send(topic=topic, value=json.dumps(value))
+        except Exception as e:
+            self.logger.error(f"Kafka send failed for {topic}: {str(e)}")
+            raise  # Re-raise for retry handling
+        
+        # Update message status in transaction
+        async with session.begin_nested():
+            message.status = MessageStatus.PROCESSED
+            message.processed_at = datetime.now(tz=settings.time_zone)

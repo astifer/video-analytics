@@ -7,10 +7,11 @@ from typing import Dict
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.scenario_models import Scenario, ScenarioUpdate, ScenarioCreate, ScenarioStatus, PredictionResult
-from shared.status_models import is_transition_allowed
+from shared.status_models import is_transition_allowed, MessageType
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
 from shared.utils import get_urls, Settings
-from sqlalchemy.ext.asyncio import create_async_engine
-from shared.transactional_outbox import OutboxManager, MessageType
+from shared.transactional_outbox import OutboxManager
 
 from contextlib import asynccontextmanager
 
@@ -21,7 +22,8 @@ import asyncio
 import time
 
 producer = KafkaProducerWrapper()
-consumer = KafkaConsumerWrapper(topic='api-to-orch-commands', group_id="orch-group")
+api_consumer = KafkaConsumerWrapper(topic='api-to-orchestrator', group_id="orchestrator")
+runner_consumer = KafkaConsumerWrapper(topic='runner-to-orchestrator', group_id="orchestrator")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,7 +34,8 @@ async def lifespan(app: FastAPI):
 
     # Initialize Kafka components
     await producer.start()
-    await consumer.start()
+    await api_consumer.start()
+    await runner_consumer.start()
 
     # Initialize Outbox components
     outbox_manager = OutboxManager(settings.db_url, kafka_producer=producer)
@@ -40,10 +43,15 @@ async def lifespan(app: FastAPI):
     # Start the outbox processing loop
     asyncio.create_task(outbox_manager.start_processing_loop())
 
+    # start consuming
+    asyncio.create_task(api_consumer.consume(process_messages_from_api))
+    asyncio.create_task(runner_consumer.consume(process_messages_from_runner))
+    
     yield
 
     await producer.stop()
-    await consumer.stop()
+    await api_consumer.stop()
+    await runner_consumer.stop()
     await session.close()
 
 
@@ -53,8 +61,6 @@ settings = Settings()
 RUNNER_URL = public_urls.get("RUNNER_URL")
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Orchestrator Service", lifespan=lifespan)
-
 scenarios: Dict[str, Scenario] = {}
 predictions: Dict[str, PredictionResult] = {}
 
@@ -66,6 +72,17 @@ engine = create_async_engine(
     pool_recycle=1800,
     echo=True,
 )
+
+async def process_messages_from_api(message_value):
+    print(f"message_value = {message_value}")
+    pass
+
+async def process_messages_from_runner(message_value):
+    print(f"message_value = {message_value}")
+    pass
+
+
+app = FastAPI(title="Orchestrator Service", lifespan=lifespan)
 
 
 @app.post("/create_scenario/", response_model=Scenario)

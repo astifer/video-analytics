@@ -9,3 +9,5 @@ aiokafka==0.12.0
 pyyaml
 pydantic
 pydantic-settings
+pytz
+psycopg2

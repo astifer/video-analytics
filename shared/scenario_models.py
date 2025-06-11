@@ -1,6 +1,7 @@
 from pydantic import BaseModel
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Literal
 from .status_models import ScenarioStatus
+
 
 class Scenario(BaseModel):
     id: str
@@ -16,3 +17,9 @@ class ScenarioUpdate(BaseModel):
 class PredictionResult(BaseModel):
     scenario_id: str
     predictions: Optional[Dict] = {}
+
+class MyMessage(BaseModel):
+    message_id: str
+    payload: dict = {}
+    sender: Literal["api", "orchestrator", "runner", "inference"]
+    to: Literal["api", "orchestrator", "runner", "inference"]

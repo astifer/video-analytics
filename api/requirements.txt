@@ -7,4 +7,5 @@ aiohttp
 aiokafka
 pyyaml
 sqlalchemy
-asyncpg
+psycopg2
+pytz

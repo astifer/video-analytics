@@ -6,5 +6,6 @@ aiokafka
 pyyaml
 sqlalchemy
 pydantic
-asyncpg
+psycopg2
 pydantic-settings
+pytz

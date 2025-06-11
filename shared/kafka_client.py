@@ -19,7 +19,7 @@ class KafkaProducerWrapper:
         delay = 3
 
         if self._producer is None:
-            for i in range(attempt_to_restart):
+            for _ in range(attempt_to_restart):
                 try:
                     self._producer = AIOKafkaProducer(
                         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
@@ -56,7 +56,7 @@ class KafkaConsumerWrapper:
         delay = 3
 
         if self._consumer is None:
-            for i in range(attempt_to_restart):
+            for _ in range(attempt_to_restart):
                 try:
                     self._consumer = AIOKafkaConsumer(
                         self.topic,
