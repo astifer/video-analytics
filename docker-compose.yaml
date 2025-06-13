@@ -1,9 +1,15 @@
 version: '3.8'
 
+networks:
+  app-tier:
+    driver: bridge
+
 services:
   kafka:
     image: bitnami/kafka:4.0
     container_name: kafka
+    networks:
+      - app-tier
     ports:
       - "9092:9092"
     environment:
@@ -17,12 +23,15 @@ services:
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
     restart: unless-stopped
 
   # postgres
   pg_orchestrator:
     image: postgres:15
     container_name: pg_orchestrator
+    networks:
+      - app-tier
     environment:
       POSTGRES_DB: orchestrator_db
       POSTGRES_USER: orchestrator_user
@@ -34,6 +43,8 @@ services:
   pg_api:
     image: postgres:15
     container_name: pg_api
+    networks:
+      - app-tier
     environment:
       POSTGRES_DB: api_db
       POSTGRES_USER: api_user
@@ -45,6 +56,8 @@ services:
   pg_runner:
     image: postgres:15
     container_name: pg_runner
+    networks:
+      - app-tier
     environment:
       POSTGRES_DB: runner_db
       POSTGRES_USER: runner_user
@@ -60,6 +73,8 @@ services:
       context: ./orchestrator
       dockerfile: Dockerfile
     container_name: orchestrator
+    networks:
+      - app-tier
     volumes:
       - ./shared:/app/shared
     ports:
@@ -80,6 +95,8 @@ services:
       context: ./api
       dockerfile: Dockerfile
     container_name: api_service
+    networks:
+      - app-tier
     volumes:
       - ./shared:/app/shared
     ports:
@@ -103,6 +120,8 @@ services:
       context: ./runner
       dockerfile: Dockerfile
     container_name: runner_service
+    networks:
+      - app-tier
     volumes:
       - ./shared:/app/shared
     ports:
@@ -122,6 +141,8 @@ services:
       context: ./inference
       dockerfile: Dockerfile
     container_name: inference_service
+    networks:
+      - app-tier
     volumes:
       - ./shared:/app/shared
     ports:

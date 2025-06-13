@@ -3,11 +3,10 @@ import json
 import logging
 from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 import asyncio
+from .utils import Settings
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-
+settings = Settings()
 logger = logging.getLogger(__name__)
-logging.basicConfig()
 
 
 class KafkaProducerWrapper:
@@ -15,17 +14,18 @@ class KafkaProducerWrapper:
         self._producer = None
 
     async def start(self):
-        attempt_to_restart = 10
+        attempt_to_restart = 1
         delay = 3
 
         if self._producer is None:
             for _ in range(attempt_to_restart):
                 try:
                     self._producer = AIOKafkaProducer(
-                        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                        bootstrap_servers=settings.kafka_bootstrap_servers,
                         value_serializer=lambda v: json.dumps(v).encode("utf-8")
                     )
                     await self._producer.start()
+                    await self._producer.send('test-topic', 'Kafka is ready!')
                     logger.info("Kafka producer started")
                 except Exception as ex:
                     logger.info(f"Kafka is not ready for Producer, error: {ex}")
@@ -46,13 +46,13 @@ class KafkaProducerWrapper:
 
 
 class KafkaConsumerWrapper:
-    def __init__(self, topic: str, group_id: str):
+    def __init__(self, topic: str, group_id: str=None):
         self.topic = topic
         self.group_id = group_id
         self._consumer = None
 
     async def start(self):
-        attempt_to_restart = 10
+        attempt_to_restart = 1
         delay = 3
 
         if self._consumer is None:
@@ -60,7 +60,7 @@ class KafkaConsumerWrapper:
                 try:
                     self._consumer = AIOKafkaConsumer(
                         self.topic,
-                        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                        bootstrap_servers=settings.kafka_bootstrap_servers,
                         group_id=self.group_id,
                         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
                         auto_offset_reset="earliest",

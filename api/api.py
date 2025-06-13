@@ -35,7 +35,8 @@ async def lifespan(app: FastAPI):
     await consumer.start()
 
     # Start Kafka consumer loop
-    # asyncio.create_task(consume_messages())
+    asyncio.create_task(outbox_manager.start_processing_loop())
+    asyncio.create_task(consumer.consume(consume_msg))
 
     yield
 
@@ -46,6 +47,9 @@ async def lifespan(app: FastAPI):
 
 public_urls = get_urls()
 app = FastAPI(title="Video Analytics API", lifespan=lifespan)
+
+async def consume_msg(msg_value):
+    logger.info(f"Received message: {msg_value}")
 
 @app.post("/scenario/")
 async def create_scenario():

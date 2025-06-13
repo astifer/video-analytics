@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 producer = KafkaProducerWrapper()
 api_consumer = KafkaConsumerWrapper(topic='api-to-orchestrator', group_id="orchestrator")
-runner_consumer = KafkaConsumerWrapper(topic='runner-to-orchestrator', group_id="orchestrator")
+# runner_consumer = KafkaConsumerWrapper(topic='runner-to-orchestrator', group_id="orchestrator")
+test_consumer = KafkaConsumerWrapper(topic='test-topic')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,8 +37,9 @@ async def lifespan(app: FastAPI):
 
     # Initialize Kafka components
     await producer.start()
+    await test_consumer.start()
     await api_consumer.start()
-    await runner_consumer.start()
+    # await runner_consumer.start()
 
     # Initialize Outbox components
     outbox_manager = OutboxManager(settings.db_url, kafka_producer=producer)
@@ -46,14 +48,15 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(outbox_manager.start_processing_loop())
 
     # start consuming
+    asyncio.create_task(test_consumer.consume(process_messages_test))
     asyncio.create_task(api_consumer.consume(process_messages_from_api))
-    asyncio.create_task(runner_consumer.consume(process_messages_from_runner))
     
     yield
 
     await producer.stop()
     await api_consumer.stop()
-    await runner_consumer.stop()
+    # await runner_consumer.stop()
+    await test_consumer.stop()
     await session.close()
 
 
@@ -65,14 +68,16 @@ RUNNER_URL = public_urls.get("RUNNER_URL")
 scenarios: Dict[str, Scenario] = {}
 predictions: Dict[str, PredictionResult] = {}
 
+async def process_messages_test(message_value):
+    logger.info(f"Receined message: {message_value}")
+    print(f"Receined message: {message_value}")
+
 
 async def process_messages_from_api(message_value):
-    print(f"message_value = {message_value}")
-    pass
+    print(f"Receined message from api: {message_value}")
 
 async def process_messages_from_runner(message_value):
     print(f"message_value = {message_value}")
-    pass
 
 
 app = FastAPI(title="Orchestrator Service", lifespan=lifespan)

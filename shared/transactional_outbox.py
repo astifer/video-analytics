@@ -69,6 +69,8 @@ class OutboxManager:
             session.rollback()
             self.logger.error(f"Error saving message to outbox: {str(e)}")
             raise
+        finally:
+            session.close()
 
     async def start_processing_loop(self, interval_seconds: int = 5) -> None:
         """Start a background task to process pending messages."""
@@ -87,16 +89,13 @@ class OutboxManager:
             OutboxMessage.status == MessageStatus.PENDING
         )
         
-        result = await session.execute(stmt)
+        result = session.execute(stmt)
         pending_messages = result.scalars().all()
 
         for message in pending_messages:
             # Nested transactions allow partial success (one failed message doesn't block others)
             try:
-                async with session.begin_nested():
-                    message.status = MessageStatus.PROCESSING
-                    await session.flush()  # Flush immediately to lock row
-                
+                message.status = MessageStatus.PROCESSING
                 await self._process_message(message, session)
 
             except Exception as e:
@@ -112,6 +111,8 @@ class OutboxManager:
                         message.status = MessageStatus.PENDING  # Retry later
                 
                 self.logger.error(f"Error processing message {message.id}: {str(e)}")
+            finally:
+                session.close()
 
 
     async def _process_message(self, message: OutboxMessage, session) -> None:
@@ -134,14 +135,13 @@ class OutboxManager:
             "processed_at": datetime.datetime.now(tz=settings.time_zone).isoformat()
         }
 
-        # Send to Kafka with error handling
         try:
             await self.kafka_producer.send(topic=topic, value=json.dumps(value))
+            message.status = MessageStatus.PROCESSED
+            message.processed_at = datetime.datetime.now(tz=settings.time_zone)
+       
         except Exception as e:
             self.logger.error(f"Kafka send failed for {topic}: {str(e)}")
             raise  # Re-raise for retry handling
         
-        # Update message status in transaction
-        async with session.begin_nested():
-            message.status = MessageStatus.PROCESSED
-            message.processed_at = datetime.datetime.now(tz=settings.time_zone)
+        session.commit()

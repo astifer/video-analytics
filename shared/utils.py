@@ -27,3 +27,7 @@ class Settings(BaseSettings):
     @property
     def time_zone(self):
         return pytz.timezone("Europe/Moscow")
+    
+    @property
+    def kafka_bootstrap_servers(self):
+        return "kafka:9092"

@@ -11,3 +11,4 @@ pydantic
 pydantic-settings
 pytz
 psycopg2
+sqlalchemy

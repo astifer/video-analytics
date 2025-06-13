@@ -13,13 +13,13 @@ import logging
 import json
 import asyncio
 
-from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+# from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.utils import get_urls, Settings
 from contextlib import asynccontextmanager
 
 
-producer = KafkaProducerWrapper()
-consumer = KafkaConsumerWrapper(topic='orchestrator-to-runner', group_id="runner")
+# producer = KafkaProducerWrapper()
+# consumer = KafkaConsumerWrapper(topic='orchestrator-to-runner', group_id="runner")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,16 +29,16 @@ async def lifespan(app: FastAPI):
     session = aiohttp.ClientSession()
 
     # Initialize Kafka components
-    await producer.start()
-    await consumer.start()
+    # await producer.start()
+    # await consumer.start()
 
     # Start Kafka consumer loop
     asyncio.create_task(consume_messages())
 
     yield
 
-    await producer.stop()
-    await consumer.stop()
+    # await producer.stop()
+    # await consumer.stop()
     await session.close()
 
 
