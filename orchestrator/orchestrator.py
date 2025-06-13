@@ -21,12 +21,10 @@ import asyncio
 
 import time
 
-logger = logging.getLogger(__name__)
-
 producer = KafkaProducerWrapper()
+
 api_consumer = KafkaConsumerWrapper(topic='api-to-orchestrator', group_id="orchestrator")
-# runner_consumer = KafkaConsumerWrapper(topic='runner-to-orchestrator', group_id="orchestrator")
-test_consumer = KafkaConsumerWrapper(topic='test-topic')
+runner_consumer = KafkaConsumerWrapper(topic='runner-to-orchestrator', group_id="orchestrator")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,9 +35,8 @@ async def lifespan(app: FastAPI):
 
     # Initialize Kafka components
     await producer.start()
-    await test_consumer.start()
     await api_consumer.start()
-    # await runner_consumer.start()
+    await runner_consumer.start()
 
     # Initialize Outbox components
     outbox_manager = OutboxManager(settings.db_url, kafka_producer=producer)
@@ -48,15 +45,15 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(outbox_manager.start_processing_loop())
 
     # start consuming
-    asyncio.create_task(test_consumer.consume(process_messages_test))
     asyncio.create_task(api_consumer.consume(process_messages_from_api))
+    asyncio.create_task(runner_consumer.consume(process_messages_from_runner))
     
     yield
 
     await producer.stop()
     await api_consumer.stop()
-    # await runner_consumer.stop()
-    await test_consumer.stop()
+    await runner_consumer.stop()
+
     await session.close()
 
 
@@ -64,97 +61,105 @@ public_urls = get_urls()
 settings = Settings()
 
 RUNNER_URL = public_urls.get("RUNNER_URL")
-
+ 
 scenarios: Dict[str, Scenario] = {}
 predictions: Dict[str, PredictionResult] = {}
 
-async def process_messages_test(message_value):
-    logger.info(f"Receined message: {message_value}")
-    print(f"Receined message: {message_value}")
-
-
-async def process_messages_from_api(message_value):
-    print(f"Receined message from api: {message_value}")
-
-async def process_messages_from_runner(message_value):
-    print(f"message_value = {message_value}")
-
-
 app = FastAPI(title="Orchestrator Service", lifespan=lifespan)
 
+async def process_messages_from_api(message_value: dict):
+    """
+    Received message from api: {"message_id": "2276172c487111f080316619d9cb34fb", "payload": {"scenario_id": "22761a74487111f080316619d9cb34fb", "target": "init_scenario"}, "created_at": "2025-06-13T16:09:27.366037", "processed_at": "2025-06-13T19:12:06.336889+03:00"}
+    """
+    print(f"Received message from api: {message_value}")
+    payload =  message_value.get("payload", {})
+    target = payload.get("target")
+    scenario_id = payload.get("scenario_id")
 
-@app.post("/create_scenario/", response_model=Scenario)
-async def create_scenario():
-    scenario_id = str(uuid4())
-    scenario = Scenario(id=scenario_id, status=ScenarioStatus.init_startup)
+    if target == 'init_scenario':
+        await create_scenario(scenario_id)
+
+    elif target == 'update_scenario':
+        update = payload.get("update")
+        if isinstance(update, dict):
+            try:
+                update = ScenarioUpdate(**update)
+                await update_scenario(scenario_id, update)
+            except Exception as e:
+                print(f"Cannot cast update to ScenarioUpdate from `update` field in message payload")
+        else:
+            print(f"`update` field in message payload is not a dict after deserialiser")
+
+
+async def process_messages_from_runner(message_value):
+    print(f"Received message from runner: {message_value}")
+
+
+
+async def create_scenario(scenario_id: str = None):
+    if scenario_id is None:
+        scenario_id = str(uuid4())
+
+    scenario = Scenario(id=scenario_id, status=ScenarioStatus.INIT_STARTUP, data={})
     scenarios[scenario_id] = scenario
-    
-    # Save the scenario creation event to outbox for API
+
     await outbox_manager.save_message(
-        message_type=MessageType.SCENARIO_CREATED,
         payload={"scenario_id": scenario_id, "status": scenario.status},
         target_service='api'
     )
-    
-    return scenario
 
-@app.post("/scenario/{scenario_id}/", response_model=Scenario)
+
 async def update_scenario(scenario_id: str, update: ScenarioUpdate):
     if scenario_id not in scenarios:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        print(f"Asking for update for non existing scenario! {scenario_id}")
+        return
     
     current_status = scenarios[scenario_id].status
     new_status = update.new_status
 
     if new_status == current_status:
-        raise HTTPException(
-            status_code=302,
-            detail=f"Scenario already has this status"
-        )
+        print(f"Scenario already has this status! {scenario_id}")
+        return
     
     if not is_transition_allowed(current_status, new_status):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Transition from {current_status} to {new_status} is not allowed."
-        )
+        print(f"Transition from {current_status} to {new_status} is not allowed.")
+        return
     
     # Update scenario status
     scenarios[scenario_id].status = new_status
     
-    # Save the status update to outbox for API
     await outbox_manager.save_message(
-        message_type=MessageType.SCENARIO_STATUS_UPDATED,
-        payload={
-            "scenario_id": scenario_id,
-            "old_status": current_status,
-            "new_status": new_status
+        message={
+            "payload": {
+                "scenario_id": scenario_id,
+                "message_type": "scenario_updated",
+                "old_status": current_status,
+                "new_status": new_status
+            }
         },
-        target_service='api'
+        target_service='api',
+        from_service='orchestrator'
     )
 
-    if new_status == ScenarioStatus.active:
-        # Save the process stream request to outbox for Runner
-        await outbox_manager.save_message(
-            message_type=MessageType.RUNNER_PROCESS_STREAM,
-            payload={"scenario_id": scenario_id},
-            target_service='runner'
-        )
-        
-        async with session.post(f"{RUNNER_URL}/process-stream/") as response:
-            predictions = await response.json()
-            scenarios[scenario_id].data = predictions
-            
-            # Save the prediction results to outbox for API
-            await outbox_manager.save_message(
-                message_type=MessageType.PREDICTION_RESULTS,
-                payload={
-                    "scenario_id": scenario_id,
-                    "predictions": predictions
-                },
-                target_service='api'
-            )
-            
-            return scenarios[scenario_id]
+    message = { 
+        "payload": { 
+            "scenario_id": scenario_id,
+            "status": new_status
+        }
+    }
+    if new_status == ScenarioStatus.IN_STARTUP_PROCESSING:
+        print(f"Sending to runner with ask for preprocess")
+        message['payload']['target'] = "preprocess"
+    if new_status == ScenarioStatus.ACTIVE:
+        print(f"Sending to runner with ask for inference")
+        message['payload']['target'] = "inference"
+
+    await outbox_manager.save_message(
+        message=message,
+        target_service='runner',
+        from_service='orchestrator'
+    )
+
 
 @app.get("/scenario/{scenario_id}/", response_model=Scenario)
 async def get_scenario(scenario_id: str):

@@ -6,15 +6,15 @@ import asyncio
 from .utils import Settings
 
 settings = Settings()
-logger = logging.getLogger(__name__)
 
 
 class KafkaProducerWrapper:
     def __init__(self):
         self._producer = None
+        self.logger = logging.getLogger(__name__)
 
     async def start(self):
-        attempt_to_restart = 1
+        attempt_to_restart = 3
         delay = 3
 
         if self._producer is None:
@@ -26,9 +26,9 @@ class KafkaProducerWrapper:
                     )
                     await self._producer.start()
                     await self._producer.send('test-topic', 'Kafka is ready!')
-                    logger.info("Kafka producer started")
+                    self.logger.info("Kafka producer started")
                 except Exception as ex:
-                    logger.info(f"Kafka is not ready for Producer, error: {ex}")
+                    self.logger.info(f"Kafka is not ready for Producer, error: {ex}")
                     await asyncio.sleep(delay)
 
     async def send(self, topic: str, value: dict, key: str = None):
@@ -36,12 +36,12 @@ class KafkaProducerWrapper:
             await self.start()
         key_bytes = key.encode("utf-8") if key else None
         await self._producer.send_and_wait(topic, value=value, key=key_bytes)
-        logger.info(f"Sent message to topic '{topic}': {value}")
+        self.logger.info(f"Sent message to topic '{topic}': {value}")
 
     async def stop(self):
         if self._producer:
             await self._producer.stop()
-            logger.info("Kafka producer stopped")
+            self.logger.info("Kafka producer stopped")
             self._producer = None
 
 
@@ -50,9 +50,11 @@ class KafkaConsumerWrapper:
         self.topic = topic
         self.group_id = group_id
         self._consumer = None
+        self.logger = logging.getLogger(__name__)
+
 
     async def start(self):
-        attempt_to_restart = 1
+        attempt_to_restart = 3
         delay = 3
 
         if self._consumer is None:
@@ -67,10 +69,10 @@ class KafkaConsumerWrapper:
                         enable_auto_commit=True,
                     )
                     await self._consumer.start()
-                    logger.info(f"Kafka consumer started for topic '{self.topic}'")
+                    self.logger.info(f"Kafka consumer started for topic '{self.topic}'")
                 except Exception as ex:
-                    logger.error(f"Kafka is not ready for Consumer, error: {ex}")
-                    asyncio.sleep(delay)
+                    self.logger.error(f"Kafka is not ready for Consumer, error: {ex}")
+                    await asyncio.sleep(delay)
 
     async def consume(self, callback):
         """
@@ -80,10 +82,10 @@ class KafkaConsumerWrapper:
         if not self._consumer:
             await self.start()
         async for message in self._consumer:
-            logger.info(f"Consumed message from topic '{self.topic}': {message.value}")
+            self.logger.info(f"Consumed message from topic '{self.topic}': {message.value}")
             await callback(message.value)
 
     async def stop(self):
         if self._consumer:
             await self._consumer.stop()
-            logger.info("Kafka consumer stopped")
+            self.logger.info("Kafka consumer stopped")

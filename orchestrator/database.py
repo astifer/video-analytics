@@ -16,7 +16,7 @@ settings = Settings()
 
 logger = logging.getLogger(__name__)
 
-logger.info(f'Start creating init tables. Database url={settings.db_url}')
+print(f'Start creating init tables. Database url={settings.db_url}')
 
 engine = create_engine(url=settings.db_url, pool_pre_ping=True)
 Base = declarative_base()
@@ -39,28 +39,37 @@ class OutboxMessage(Base):
     from_service = Column(String, nullable=False) 
     target_service = Column(String, nullable=False)
     
+class Scenario(Base):
+    __tablename__ = 'scenarios'
+
+    id = Column(Integer, primary_key=True)
+    payload = Column(JSON, nullable=False) # all info we needed, eg `result` or `type`
+    status = Column(SQLEnum(MessageStatus), nullable=False, default=MessageStatus.PENDING)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now(tz=settings.time_zone))
+    processed_at = Column(DateTime, nullable=True)
+
 
 def initialize_database():
     """Create tables if they don't exist"""
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info("Table 'outbox_messages' created/verified successfully")
+        print("Tables created/verified successfully")
     except Exception as e:
-        logger.info(f"Table creation failed: {e}")
+        print(f"Table creation failed: {e}")
         raise
 
 # Test connection and initialize table
 if __name__ == "__main__":
     success = False
     for i in range(3):
-        logger.info(f"Trying to init tables. Attempt: {i}")
+        print(f"Trying to init tables. Attempt: {i}")
         try:
             with engine.connect() as connection:
-                logger.info("Database connection successful")
+                print("Database connection successful")
             initialize_database()
             success = True
         except Exception as e:
-            logger.info(f"Database initialization failed: {e}")
+            print(f"Database initialization failed: {e}")
 
         time.sleep(3)
 

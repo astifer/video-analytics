@@ -15,7 +15,6 @@ from shared.scenario_models import ScenarioStatus, ScenarioCreate, ScenarioUpdat
 from shared.utils import get_urls, Settings
 from shared.transactional_outbox import OutboxManager
 
-logger = logging.getLogger(__name__)
 settings = Settings()
 
 producer = KafkaProducerWrapper()
@@ -49,7 +48,7 @@ public_urls = get_urls()
 app = FastAPI(title="Video Analytics API", lifespan=lifespan)
 
 async def consume_msg(msg_value):
-    logger.info(f"Received message: {msg_value}")
+    print(f"Received message: {msg_value}")
 
 @app.post("/scenario/")
 async def create_scenario():
@@ -60,7 +59,6 @@ async def create_scenario():
         message_id=message_id, 
         sender='api', 
         to='orchestrator', 
-        scenario=None, 
         payload={"scenario_id": scenario_id, "target": 'init_scenario'}
     )
     await outbox_manager.save_message(message.model_dump())
@@ -78,7 +76,7 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         payload= {"scenario_id": scenario_id, "target": 'update_scenario', "update": update.model_dump()}
     )
     await outbox_manager.save_message(message.model_dump())
-
+    # but it can be not executed
     return {"status": 200, "scenario_id": scenario_id, "new_status": update.new_status}
 
 @app.get("/scenario/{scenario_id}/")

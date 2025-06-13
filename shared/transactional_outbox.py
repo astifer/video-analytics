@@ -43,7 +43,7 @@ class OutboxManager:
         self.logger = logging.getLogger(__name__)
         self.retry_count = retry_count
 
-    async def save_message(self, message: Dict[str, Any]) -> None:
+    async def save_message(self, message: Dict[str, Any], target_service: str = None, from_service: str = None) -> None:
         """Save a message to the outbox table."""
         session = self.Session()
 
@@ -51,8 +51,8 @@ class OutboxManager:
         if not message_id:
             message_id = uuid.uuid1().hex
         payload = message.get("payload", {})
-        target_service = message.get("target_service") or message.get("to")
-        from_service = message.get("from_service") or message.get("from") or message.get("sender")
+        target_service = message.get("target_service") or message.get("to") or target_service
+        from_service = message.get("from_service") or message.get("from") or message.get("sender") or from_service
 
         try:
             message = OutboxMessage(
@@ -72,7 +72,7 @@ class OutboxManager:
         finally:
             session.close()
 
-    async def start_processing_loop(self, interval_seconds: int = 5) -> None:
+    async def start_processing_loop(self, interval_seconds: int = 2) -> None:
         """Start a background task to process pending messages."""
         while True:
             try:

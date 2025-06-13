@@ -13,41 +13,47 @@ import logging
 import json
 import asyncio
 
-# from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+from shared.status_models import ScenarioStatus
+from shared.scenario_models import Scenario
+from shared.transactional_outbox import OutboxManager
+
 from shared.utils import get_urls, Settings
 from contextlib import asynccontextmanager
 
-
-# producer = KafkaProducerWrapper()
-# consumer = KafkaConsumerWrapper(topic='orchestrator-to-runner', group_id="runner")
+settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global session
 
+    producer = KafkaProducerWrapper()
+    orchestrator_consumer = KafkaConsumerWrapper(topic='orchestrator-to-runner', group_id="runner")
+    outbox_manager = OutboxManager(db_url=settings.db_url, kafka_producer=producer)
+
     # Initialize HTTP session
     session = aiohttp.ClientSession()
 
     # Initialize Kafka components
-    # await producer.start()
-    # await consumer.start()
+    await producer.start()
+    await orchestrator_consumer.start()
 
     # Start Kafka consumer loop
-    asyncio.create_task(consume_messages())
+    asyncio.create_task(outbox_manager.start_processing_loop(interval_seconds=1))
+    asyncio.create_task(orchestrator_consumer.consume(process_messages_from_orchestrator))
 
     yield
 
-    # await producer.stop()
-    # await consumer.stop()
     await session.close()
+    await producer.stop()
+    await orchestrator_consumer.stop()
 
 
 public_urls = get_urls()
 STREAM_URL = public_urls.get("STREAM_URL")
 INFERENCE_URL = public_urls.get("INFERENCE_URL")
 
-
-logger = logging.getLogger(__name__)
+scenarios: dict[str, Scenario] = {}
 app = FastAPI(title="Runner Service", lifespan=lifespan)
 
 
@@ -55,47 +61,28 @@ app = FastAPI(title="Runner Service", lifespan=lifespan)
 class AliveResponse(BaseModel):
     status_code: int
 
-class StreamResponse(BaseModel):
-    content: Any
+async def process_messages_from_orchestrator(message_value: dict):
+    """
+    Receined message from orchestrator: {"message_id": "2276172c487111f080316619d9cb34fb", "payload": {"scenario_id": "22761a74487111f080316619d9cb34fb", "target": "init_scenario"}, "created_at": "2025-06-13T16:09:27.366037", "processed_at": "2025-06-13T19:12:06.336889+03:00"}
+    """
+    print(f"Received message from orchestrator: {message_value}")
+    payload =  message_value.get("payload", {})
+    scenario_id = payload.get("scenario_id")
+    status = payload.get("status")
 
+    if status == ScenarioStatus.IN_STARTUP_PROCESSING:
+        frame = await frame_stream(STREAM_URL)
+        scenarios[scenario_id] = Scenario(id=scenario_id, status=ScenarioStatus.IN_SHUTDOWN_PROCESSING, data={"frame": frame})
+    elif status == ScenarioStatus.ACTIVE:
+        frame = scenarios[scenario_id].data.get("frame")
+        if not frame:
+            print(f"Not found frame for this scenario. {scenario_id=}")
+            return
+        result = await send_frame_to_inference(frame)
+        scenarios[scenario_id].data["result"] = result
+    else:
+        print(f"Runner got message with not suitable status: {status}. Runner want IN_STARTUP_PROCESSING or ACTIVE statuses. {scenario_id=}")
 
-async def consume_messages():
-    """Consume messages from Kafka and process them."""
-    while True:
-        try:
-            break
-            message = await consumer.get_message()
-            if message:
-                await process_message(message)
-        except Exception as e:
-            logger.error(f"Error consuming message: {str(e)}")
-        await asyncio.sleep(0.1)
-
-async def process_message(message):
-    """Process a message from the outbox."""
-    return
-    try:
-        data = json.loads(message.value)
-        message_type = data.get('message_type')
-        payload = data.get('payload')
-        
-        if message_type == 'runner_process_stream':
-            # Process the stream as requested
-            scenario_id = payload.get('scenario_id')
-            if scenario_id:
-                result = await process_stream()
-                # Send result back to orchestrator
-                await producer.send_message(
-                    topic='runner-to-orch-results',
-                    value=json.dumps({
-                        'scenario_id': scenario_id,
-                        'result': result
-                    })
-                )
-        else:
-            logger.warning(f"Unknown message type: {message_type}")
-    except Exception as e:
-        logger.error(f"Error processing message: {str(e)}")
 
 async def send_frame_to_inference(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -116,9 +103,9 @@ async def send_frame_to_inference(frame):
     async with session.post(f"{INFERENCE_URL}/inference/", data=form) as response:
         res = await response.json()
         if response.status != 200:
-            logger.error(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
-            return False
-        
+            print(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
+            return
+
         return res
 
 async def frame_stream(stream_url: str):
@@ -155,16 +142,7 @@ def plot_boxes(frame, predictions):
                 )
         
     return frame
-    
-@app.post("/process-stream/", response_model=StreamResponse)
-async def process_stream(data: Any = None):
-    frame = await frame_stream(STREAM_URL)
-    result = await send_frame_to_inference(frame)
 
-    if result:
-        return JSONResponse(content=result)
-
-    return {"message": "No valid frame was processed"}
 
 
 @app.get("/status/", response_model=AliveResponse)
