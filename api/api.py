@@ -15,13 +15,20 @@ from shared.scenario_models import ScenarioStatus, ScenarioCreate, ScenarioUpdat
 from shared.utils import get_urls, Settings
 from shared.transactional_outbox import OutboxManager
 
+logger = logging.getLogger(__name__)
+settings = Settings()
+
+producer = KafkaProducerWrapper()
+consumer = KafkaConsumerWrapper('orchestrator-to-api', 'api')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global session
+    global session, outbox_manager
 
     # Initialize HTTP session
     session = aiohttp.ClientSession()
+
+    outbox_manager = OutboxManager(db_url=settings.db_url, kafka_producer=producer, retry_count=3)
 
     # Initialize Kafka components
     await producer.start()
@@ -36,16 +43,9 @@ async def lifespan(app: FastAPI):
     await producer.stop()
     await consumer.stop()
 
-producer = KafkaProducerWrapper()
-consumer = KafkaConsumerWrapper('api-to-orchestrator', 'api')
 
 public_urls = get_urls()
-
-logger = logging.getLogger(__name__)
-settings = Settings()
-
 app = FastAPI(title="Video Analytics API", lifespan=lifespan)
-outbox_manager = OutboxManager(db_url=settings.db_url, kafka_producer=producer, retry_count=3)
 
 @app.post("/scenario/")
 async def create_scenario():

@@ -21,13 +21,15 @@ import asyncio
 
 import time
 
+logger = logging.getLogger(__name__)
+
 producer = KafkaProducerWrapper()
 api_consumer = KafkaConsumerWrapper(topic='api-to-orchestrator', group_id="orchestrator")
 runner_consumer = KafkaConsumerWrapper(topic='runner-to-orchestrator', group_id="orchestrator")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global session, outbox_manager, outbox_processor
+    global session, outbox_manager
 
     # Initialize HTTP session
     session = aiohttp.ClientSession()
@@ -60,18 +62,9 @@ settings = Settings()
 
 RUNNER_URL = public_urls.get("RUNNER_URL")
 
-logger = logging.getLogger(__name__)
 scenarios: Dict[str, Scenario] = {}
 predictions: Dict[str, PredictionResult] = {}
 
-engine = create_async_engine(
-    settings.db_url,
-    pool_size=5,
-    max_overflow=2,
-    pool_pre_ping=True,
-    pool_recycle=1800,
-    echo=True,
-)
 
 async def process_messages_from_api(message_value):
     print(f"message_value = {message_value}")

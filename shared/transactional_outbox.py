@@ -1,15 +1,12 @@
-from sqlalchemy import Column, String, JSON, DateTime, Integer, create_engine, Enum as SQLEnum
+from sqlalchemy import Column, String, JSON, DateTime, Integer,  select, create_engine, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy import select
 
-from datetime import datetime
+import datetime
 import json
 import asyncio
 from typing import Any, Dict, Optional
 import logging
-import aiohttp
 import uuid
 
 from .status_models import MessageStatus
@@ -29,7 +26,7 @@ class OutboxMessage(Base):
     message_id = Column(String, nullable=False)
     payload = Column(JSON, nullable=False) # all info we needed, eg `result` or `type`
     status = Column(SQLEnum(MessageStatus), nullable=False, default=MessageStatus.PENDING)
-    created_at = Column(DateTime, nullable=False, default=datetime.now(tz=settings.time_zone))
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now(tz=settings.time_zone))
     processed_at = Column(DateTime, nullable=True)
     retry_count = Column(Integer, default=3)
     error = Column(String, default='None')
@@ -134,7 +131,7 @@ class OutboxManager:
             "message_id": message.message_id,
             "payload": message.payload,
             "created_at": message.created_at.isoformat(),
-            "processed_at": datetime.now(tz=settings.time_zone).isoformat()
+            "processed_at": datetime.datetime.now(tz=settings.time_zone).isoformat()
         }
 
         # Send to Kafka with error handling
@@ -147,4 +144,4 @@ class OutboxManager:
         # Update message status in transaction
         async with session.begin_nested():
             message.status = MessageStatus.PROCESSED
-            message.processed_at = datetime.now(tz=settings.time_zone)
+            message.processed_at = datetime.datetime.now(tz=settings.time_zone)

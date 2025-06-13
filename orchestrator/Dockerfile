@@ -13,12 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-COPY init_db.sql /docker-entrypoint-initdb.d/
+COPY entrypoint.sh .
 
-# Wait for database to be ready and initialize tables
-COPY wait-for-it.sh /wait-for-it.sh
+RUN chmod +x entrypoint.sh
 
-RUN chmod +x /wait-for-it.sh
-
-# Use uvicorn to run the FastAPI application
-CMD ["/wait-for-it.sh", "localhost", "5432", "uvicorn", "orchestrator:app", "--host", "0.0.0.0", "--port", "1612"]
+ENTRYPOINT ["./entrypoint.sh"]
+CMD ["uvicorn", "orchestrator:app", "--host", "0.0.0.0", "--port", "1612"]

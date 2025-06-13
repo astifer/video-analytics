@@ -69,6 +69,7 @@ services:
       - kafka
       # - pg_orchestrator
     environment:
+      POSTGRES_HOST: pg_orchestrator
       POSTGRES_PORT: 5432
       POSTGRES_DB: orchestrator_db
       POSTGRES_USER: orchestrator_user
@@ -89,7 +90,10 @@ services:
       - orchestrator
       - pg_api
     environment:
+      SERVICE_PORT: 8000
+      POSTGRES_HOST: pg_api
       POSTGRES_DB: api_db
+      POSTGRES_PORT: 5432
       POSTGRES_USER: api_user
       POSTGRES_PASSWORD: api_pass
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -108,6 +112,7 @@ services:
       - kafka
       - inference
     environment:
+      POSTGRES_HOST: pg_runner
       POSTGRES_DB: runner_db
       POSTGRES_USER: runner_user
       POSTGRES_PASSWORD: runner_pass

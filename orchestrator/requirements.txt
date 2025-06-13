@@ -6,6 +6,7 @@ aiokafka
 pyyaml
 sqlalchemy
 pydantic
+psycopg2-binary
 psycopg2
 pydantic-settings
 pytz
