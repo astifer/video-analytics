@@ -11,8 +11,9 @@ import asyncio
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.scenario_models import ScenarioUpdate, MyMessage
 
-from shared.utils import get_urls, settings
-from shared.transactional_outbox import OutboxManager, Scenario
+from shared.utils import settings
+from shared.transactional_outbox import OutboxManager
+from shared.database import Scenario
 
 # from database import Scenario
 
@@ -39,7 +40,7 @@ async def lifespan(app: FastAPI):
 
     # Start Kafka consumer loop
     asyncio.create_task(outbox_manager.start_processing_loop())
-    asyncio.create_task(consumer.consume(consume_msg))
+    asyncio.create_task(consumer.consume(consume_messages_from_orchestrator))
 
     yield
 
@@ -47,25 +48,49 @@ async def lifespan(app: FastAPI):
     await producer.stop()
     await consumer.stop()
 
-
-public_urls = get_urls()
+ORCHESTRATOR_URL = settings.public_urls.get("ORCHESTRATOR_URL")
 app = FastAPI(title="Video Analytics API", lifespan=lifespan)
 
-async def consume_msg(message_value):
+async def consume_messages_from_orchestrator(message_value):
     print(f"Received message: {message_value}")
+
     payload =  message_value.get("payload", {})
-    target = payload.get("target")
     scenario_id = payload.get("scenario_id")
 
-    if target == "scenario_updated":
-        session = Session_db()
-        stmt = select(Scenario).filter(
-            Scenario.scenario_id == scenario_id
-        )
-        result = session.execute(stmt)
-        scenarios = result.scalars().all()
-        for scenario in scenarios:
-            scenario.payload = payload
+    await update_local_scenario(scenario_id, message_value)
+
+
+async def update_local_scenario(scenario_id, message_value):
+    target = message_value.get("target") or payload.get("target")
+
+    payload =  message_value.get("payload", {})
+    status = payload.get("status")
+
+    session_db = Session_db()
+    stmt = select(Scenario).filter(
+        Scenario.scenario_id == scenario_id
+    )
+    result = session_db.execute(stmt)
+    scenario = result.scalars().first()
+
+    scenario.payload = payload
+    if status:
+        scenario.status = status
+
+    session_db.commit()
+    session_db.close()
+
+async def ask_orchestrator_actual_status(scenario_id):
+    for _ in range(3):
+        async with session.post(f"{ORCHESTRATOR_URL}/scenario/{scenario_id}") as response:
+            res = await response.json()
+            if response.status != 200:
+                print(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
+                asyncio.sleep(1)
+                continue
+            return res
+
+    return None
 
 
 @app.post("/scenario/")
@@ -119,12 +144,16 @@ async def get_prediction(scenario_id: str):
     )
 
     result = session.execute(stmt)
-    scenarios = result.scalars().all()
-    for scenario in scenarios:
+    scenario = result.scalars().first()
+    if scenario:
         return {"status": 200, "details": {"status": scenario.status, "scenario_id": scenario_id, "payload": scenario.payload}}
     
-    # ask orchestrator directly ...
-    return {"status": 404}
+
+    orchestrator_answer = await ask_orchestrator_actual_status(scenario_id)
+    if orchestrator_answer:
+        return {"status": 200, "details": orchestrator_answer}
+    
+    return {"status": 404, "details": "Not found"}
 
 if __name__ == "__main__":
     import uvicorn
