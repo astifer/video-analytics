@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
 from pydantic import BaseModel
 from enum import Enum
@@ -6,10 +8,11 @@ from uuid import uuid4
 from typing import Dict
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
-from shared.scenario_models import Scenario, ScenarioUpdate, ScenarioCreate, ScenarioStatus, PredictionResult
-from shared.status_models import is_transition_allowed, MessageType
+from shared.scenario_models import ScenarioUpdate, ScenarioCreate, ScenarioStatus, PredictionResult
+from shared.database import Scenario
+from shared.status_models import is_transition_allowed
 
-from shared.utils import get_urls, settings
+from shared.utils import settings
 from shared.transactional_outbox import OutboxManager
 
 from contextlib import asynccontextmanager
@@ -25,10 +28,14 @@ runner_consumer = KafkaConsumerWrapper(topic='runner-to-orchestrator', group_id=
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global session, outbox_manager
+    global session, outbox_manager, Session_db
 
     # Initialize HTTP session
     session = aiohttp.ClientSession()
+
+    # Initialize database session
+    engine = create_engine(settings.db_url)
+    Session_db = sessionmaker(bind=engine)
 
     # Initialize Kafka components
     await producer.start()
@@ -54,10 +61,11 @@ async def lifespan(app: FastAPI):
     await session.close()
 
 
-public_urls = get_urls()
+public_urls = settings.public_urls
 
 RUNNER_URL = public_urls.get("RUNNER_URL")
- 
+
+# TODO: move to database
 scenarios: Dict[str, Scenario] = {}
 predictions: Dict[str, PredictionResult] = {}
 
@@ -145,9 +153,11 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
     if new_status == ScenarioStatus.IN_STARTUP_PROCESSING:
         print(f"Sending to runner with ask for preprocess")
         message['payload']['target'] = "preprocess"
+        message['target'] = "preprocess"
     if new_status == ScenarioStatus.ACTIVE:
         print(f"Sending to runner with ask for inference")
         message['payload']['target'] = "inference"
+        message['target'] = "inference"
 
     await outbox_manager.save_message(
         message=message,

@@ -14,12 +14,6 @@ class ScenarioStatus(str, Enum):
     IN_SHUTDOWN_PROCESSING = 'in_shutdown_processing'
     INACTIVE = 'inactive'
 
-class MessageType(str, Enum):
-    SCENARIO_CREATED = 'scenario_created'
-    SCENARIO_STATUS_UPDATED = 'scenario_status_updated'
-    PREDICTION_RESULTS = 'prediction_results'
-    RUNNER_PROCESS_STREAM = 'runner_process_stream'
-
 # Define allowed transitions for scenario statuses
 ALLOWED_TRANSITIONS = {
     ScenarioStatus.INIT_STARTUP: [ScenarioStatus.IN_STARTUP_PROCESSING],

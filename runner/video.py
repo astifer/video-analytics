@@ -1,16 +1,15 @@
-import cv2
 import numpy as np
 from PIL import Image
+from transformers import YolosImageProcessor, YolosForObjectDetection
+import torch
+import cv2
 
-STREAM_URL = "https://s46.ipcamlive.com/streams/2eulqgccb8zksexmj/stream.m3u8"
+from shared.utils import settings
+
+STREAM_URL = settings.public_urls.get("STREAM_URL", "https://s46.ipcamlive.com/streams/2eulqgccb8zksexmj/stream.m3u8")
 
 # Open the video capture
 cap = cv2.VideoCapture(STREAM_URL)
-
-
-from transformers import YolosImageProcessor, YolosForObjectDetection
-from PIL import Image
-import torch
 
 model = YolosForObjectDetection.from_pretrained('hustvl/yolos-tiny')
 image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")

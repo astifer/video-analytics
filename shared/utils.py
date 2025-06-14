@@ -32,4 +32,8 @@ class Settings(BaseSettings):
     def kafka_bootstrap_servers(self):
         return "kafka:9092"
 
+    @property
+    def public_urls(self):
+        return get_urls()
+
 settings = Settings()
