@@ -18,10 +18,9 @@ from shared.status_models import ScenarioStatus
 from shared.scenario_models import Scenario
 from shared.transactional_outbox import OutboxManager
 
-from shared.utils import get_urls, Settings
+from shared.utils import get_urls, settings
 from contextlib import asynccontextmanager
 
-settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

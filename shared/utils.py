@@ -31,3 +31,5 @@ class Settings(BaseSettings):
     @property
     def kafka_bootstrap_servers(self):
         return "kafka:9092"
+
+settings = Settings()

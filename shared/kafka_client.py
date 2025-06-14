@@ -3,9 +3,7 @@ import json
 import logging
 from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 import asyncio
-from .utils import Settings
-
-settings = Settings()
+from .utils import settings
 
 
 class KafkaProducerWrapper:

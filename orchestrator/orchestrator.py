@@ -8,18 +8,15 @@ from typing import Dict
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.scenario_models import Scenario, ScenarioUpdate, ScenarioCreate, ScenarioStatus, PredictionResult
 from shared.status_models import is_transition_allowed, MessageType
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
-from shared.utils import get_urls, Settings
+from shared.utils import get_urls, settings
 from shared.transactional_outbox import OutboxManager
 
 from contextlib import asynccontextmanager
 
-import logging
 import aiohttp
 import asyncio
 
-import time
 
 producer = KafkaProducerWrapper()
 
@@ -58,7 +55,6 @@ async def lifespan(app: FastAPI):
 
 
 public_urls = get_urls()
-settings = Settings()
 
 RUNNER_URL = public_urls.get("RUNNER_URL")
  
@@ -132,9 +128,8 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         message={
             "payload": {
                 "scenario_id": scenario_id,
-                "message_type": "scenario_updated",
-                "old_status": current_status,
-                "new_status": new_status
+                "target": "scenario_updated",
+                "status": new_status
             }
         },
         target_service='api',

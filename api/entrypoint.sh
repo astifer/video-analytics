@@ -6,6 +6,6 @@ until PGPASSWORD=$POSTGRES_PASSWORD psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT"
 done
 
 >&2 echo "Postgres is up - executing command"
-python -m database  # Run a table initialization
+python -m db  # Run a table initialization
 >&2 echo "Tables are inited"
 exec "$@" 

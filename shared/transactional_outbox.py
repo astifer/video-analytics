@@ -11,12 +11,11 @@ import uuid
 
 from .status_models import MessageStatus
 from .scenario_models import Scenario
-from .utils import Settings
+from .utils import settings
 from .kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 
 
 Base = declarative_base()
-settings = Settings()
 
 
 class OutboxMessage(Base):
@@ -24,6 +23,7 @@ class OutboxMessage(Base):
 
     id = Column(Integer, primary_key=True)
     message_id = Column(String, nullable=False)
+    target = Column(String, default='None')
     payload = Column(JSON, nullable=False) # all info we needed, eg `result` or `type`
     status = Column(SQLEnum(MessageStatus), nullable=False, default=MessageStatus.PENDING)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.now(tz=settings.time_zone))
@@ -36,7 +36,7 @@ class OutboxMessage(Base):
 class OutboxManager:
     def __init__(self, db_url: str, kafka_producer: KafkaProducerWrapper = None, retry_count: int = 3):
         self.engine = create_engine(db_url)
-        Base.metadata.create_all(self.engine)
+        Base.metadata.create_all(self.engine) # but seems to be already created in db.py
         self.Session = sessionmaker(bind=self.engine)
 
         self.kafka_producer = kafka_producer
@@ -57,6 +57,7 @@ class OutboxManager:
         try:
             message = OutboxMessage(
                 message_id=message_id,
+                target=message.get("target"),
                 payload=payload,
                 status=MessageStatus.PENDING,
                 from_service=from_service,

@@ -1,31 +1,35 @@
 from fastapi import FastAPI, HTTPException
-import logging
-import json
-import uuid
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+import uuid
 
 from contextlib import asynccontextmanager
 import aiohttp
 import asyncio
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
-from shared.scenario_models import ScenarioStatus, ScenarioCreate, ScenarioUpdate, MyMessage
+from shared.scenario_models import ScenarioUpdate, MyMessage
 
-from shared.utils import get_urls, Settings
-from shared.transactional_outbox import OutboxManager
+from shared.utils import get_urls, settings
+from shared.transactional_outbox import OutboxManager, Scenario
 
-settings = Settings()
+# from database import Scenario
 
 producer = KafkaProducerWrapper()
 consumer = KafkaConsumerWrapper('orchestrator-to-api', 'api')
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global session, outbox_manager
+    global session, outbox_manager, Session_db
 
     # Initialize HTTP session
     session = aiohttp.ClientSession()
+
+    # Initialize database session
+    engine = create_engine(settings.db_url)
+    Session_db = sessionmaker(bind=engine)
 
     outbox_manager = OutboxManager(db_url=settings.db_url, kafka_producer=producer, retry_count=3)
 
@@ -47,8 +51,22 @@ async def lifespan(app: FastAPI):
 public_urls = get_urls()
 app = FastAPI(title="Video Analytics API", lifespan=lifespan)
 
-async def consume_msg(msg_value):
-    print(f"Received message: {msg_value}")
+async def consume_msg(message_value):
+    print(f"Received message: {message_value}")
+    payload =  message_value.get("payload", {})
+    target = payload.get("target")
+    scenario_id = payload.get("scenario_id")
+
+    if target == "scenario_updated":
+        session = Session_db()
+        stmt = select(Scenario).filter(
+            Scenario.scenario_id == scenario_id
+        )
+        result = session.execute(stmt)
+        scenarios = result.scalars().all()
+        for scenario in scenarios:
+            scenario.payload = payload
+
 
 @app.post("/scenario/")
 async def create_scenario():
@@ -95,7 +113,18 @@ async def get_scenario(scenario_id: str):
 
 @app.get("/prediction/{scenario_id}/")
 async def get_prediction(scenario_id: str):
-    return {"status": 200}
+    session = Session_db()
+    stmt = select(Scenario).filter(
+        Scenario.scenario_id == scenario_id
+    )
+
+    result = session.execute(stmt)
+    scenarios = result.scalars().all()
+    for scenario in scenarios:
+        return {"status": 200, "details": {"status": scenario.status, "scenario_id": scenario_id, "payload": scenario.payload}}
+    
+    # ask orchestrator directly ...
+    return {"status": 404}
 
 if __name__ == "__main__":
     import uvicorn
