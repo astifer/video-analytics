@@ -3,11 +3,6 @@ from typing import Dict, Optional, Any, Literal
 from .status_models import ScenarioStatus
 
 
-class Scenario(BaseModel):
-    id: str
-    status: ScenarioStatus
-    data: dict = {}
-
 class ScenarioCreate(BaseModel):
     initial_status: ScenarioStatus
 
