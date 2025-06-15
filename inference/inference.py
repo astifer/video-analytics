@@ -1,9 +1,8 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from model import get_bb, PredictedObject, PredictionResult
+from model import get_bb, PredictionResult
 from PIL import Image
 
 import io
-from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 
 app = FastAPI(title="Inference Service")
 

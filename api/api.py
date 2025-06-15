@@ -1,5 +1,5 @@
-from fastapi import FastAPI, HTTPException
-from sqlalchemy import create_engine, select
+from fastapi import FastAPI
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import uuid
@@ -13,7 +13,7 @@ from shared.scenario_models import ScenarioUpdate, MyMessage
 
 from shared.utils import settings
 from shared.transactional_outbox import OutboxManager
-from shared.database import Scenario
+from shared.database import Scenario, find_scenario
 
 # from database import Scenario
 
@@ -67,12 +67,13 @@ async def update_local_scenario(scenario_id, message_value):
     status = payload.get("status")
 
     session_db = Session_db()
-    stmt = select(Scenario).filter(
-        Scenario.scenario_id == scenario_id
-    )
-    result = session_db.execute(stmt)
-    scenario = result.scalars().first()
+    scenario = find_scenario(session_db, scenario_id, close_session=False)
 
+    if not scenario:
+        session_db.commit()
+        session_db.close()
+        return
+    
     scenario.payload = payload
     if status:
         scenario.status = status
@@ -138,16 +139,10 @@ async def get_scenario(scenario_id: str):
 
 @app.get("/prediction/{scenario_id}/")
 async def get_prediction(scenario_id: str):
-    session = Session_db()
-    stmt = select(Scenario).filter(
-        Scenario.scenario_id == scenario_id
-    )
-
-    result = session.execute(stmt)
-    scenario = result.scalars().first()
+    session_db = Session_db()
+    scenario = find_scenario(session_db, scenario_id, close_session=True)
     if scenario:
         return {"status": 200, "details": {"status": scenario.status, "scenario_id": scenario_id, "payload": scenario.payload}}
-    
 
     orchestrator_answer = await ask_orchestrator_actual_status(scenario_id)
     if orchestrator_answer:

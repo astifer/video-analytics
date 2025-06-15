@@ -7,13 +7,13 @@ import aiohttp
 import asyncio
 import datetime
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.status_models import ScenarioStatus
 from shared.transactional_outbox import OutboxManager
-from shared.database import Scenario
+from shared.database import Scenario, find_scenario
 
 from shared.utils import settings
 from contextlib import asynccontextmanager
@@ -89,11 +89,10 @@ async def run_preprocess_scenario(scenario_id):
 async def run_active_scenario(scenario_id):
     session_db = Session_db()
 
-    stmt = select(Scenario).filter(
-        Scenario.scenario_id == scenario_id
-    )
-    result = session_db.execute(stmt)
-    scenario = result.scalars().first()
+    scenario = find_scenario(session_db, scenario_id, close_session=False)
+    if not scenario:
+        return
+    
     scenario.status = ScenarioStatus.ACTIVE
     payload = scenario.payload
     frame = payload.get("frame")
@@ -104,6 +103,9 @@ async def run_active_scenario(scenario_id):
     inference_result = await send_frame_to_inference(frame)
     scenario.payload['inference_result'] = inference_result
     scenario.processed_at = datetime.datetime.now(tz=settings.time_zone)
+    session_db.commit()
+    session_db.close()
+
     await outbox_manager.save_message(
         message={
             "target": "inference_result",
@@ -117,8 +119,7 @@ async def run_active_scenario(scenario_id):
         from_service="runner",
         target_service="orchestrator"
     )
-    session_db.commit()
-    session_db.close()
+
 
 async def send_frame_to_inference(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

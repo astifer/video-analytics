@@ -1,15 +1,12 @@
 from fastapi import FastAPI, HTTPException
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from pydantic import BaseModel
-from enum import Enum
 from uuid import uuid4
-from typing import Dict
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
-from shared.scenario_models import ScenarioUpdate, ScenarioCreate, ScenarioStatus, PredictionResult
-from shared.database import Scenario
+from shared.scenario_models import ScenarioUpdate, ScenarioStatus
+from shared.database import Scenario, find_scenario
 from shared.status_models import is_transition_allowed
 
 from shared.utils import settings
@@ -62,12 +59,7 @@ async def lifespan(app: FastAPI):
 
 
 public_urls = settings.public_urls
-
 RUNNER_URL = public_urls.get("RUNNER_URL")
-
-# TODO: move to database
-scenarios: Dict[str, Scenario] = {}
-predictions: Dict[str, PredictionResult] = {}
 
 app = FastAPI(title="Orchestrator Service", lifespan=lifespan)
 
@@ -99,13 +91,15 @@ async def process_messages_from_runner(message_value):
     print(f"Received message from runner: {message_value}")
 
 
-
 async def create_scenario(scenario_id: str = None):
     if scenario_id is None:
         scenario_id = str(uuid4())
 
     scenario = Scenario(id=scenario_id, status=ScenarioStatus.INIT_STARTUP, data={})
-    scenarios[scenario_id] = scenario
+    session_db = Session_db()
+    session_db.add(scenario)
+    session_db.commit()
+    session_db.close()
 
     await outbox_manager.save_message(
         payload={"scenario_id": scenario_id, "status": scenario.status},
@@ -114,11 +108,14 @@ async def create_scenario(scenario_id: str = None):
 
 
 async def update_scenario(scenario_id: str, update: ScenarioUpdate):
-    if scenario_id not in scenarios:
+    session_db = Session_db()
+    scenario = find_scenario(session_db, scenario_id, close_session=False)
+
+    if not scenario:
         print(f"Asking for update for non existing scenario! {scenario_id}")
         return
     
-    current_status = scenarios[scenario_id].status
+    current_status = scenario.status
     new_status = update.new_status
 
     if new_status == current_status:
@@ -130,8 +127,10 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         return
     
     # Update scenario status
-    scenarios[scenario_id].status = new_status
-    
+    scenario.status = new_status
+    session_db.commit()
+    session_db.close()
+
     await outbox_manager.save_message(
         message={
             "payload": {
@@ -168,9 +167,15 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
 
 @app.get("/scenario/{scenario_id}/", response_model=Scenario)
 async def get_scenario(scenario_id: str):
-    if scenario_id not in scenarios:
+    session_db = Session_db()
+    scenario = find_scenario(session_db, scenario_id, close_session=True)
+    if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    return scenarios[scenario_id]
+    
+    details = scenario.__dict__
+    del details['_sa_instance_state']
+
+    return {"status": 200, "details": details}
 
 
 if __name__ == "__main__":

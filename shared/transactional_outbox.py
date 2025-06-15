@@ -5,14 +5,13 @@ from sqlalchemy.orm import sessionmaker
 import datetime
 import json
 import asyncio
-from typing import Any, Dict, Optional
 import logging
 import uuid
+from typing import Any, Dict
 
 from .status_models import MessageStatus
-from .scenario_models import Scenario
 from .utils import settings
-from .kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
+from .kafka_client import KafkaProducerWrapper
 
 
 Base = declarative_base()

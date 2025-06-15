@@ -1,7 +1,7 @@
-from sqlalchemy import create_engine, Column, Integer, String, JSON
-from sqlalchemy import DateTime, Integer, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, JSON
+from sqlalchemy import select, DateTime, Integer, Enum as SQLEnum
 
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, Session
 
 import logging
 
@@ -45,6 +45,23 @@ class Scenario(Base):
     processed_at = Column(DateTime, nullable=True)
 
 
+def find_scenario(session_db: Session, scenario_id: str, close_session: bool=False) -> Scenario | None:
+
+    stmt = select(Scenario).filter(
+        Scenario.scenario_id == scenario_id 
+    )
+    result = session_db.execute(stmt)
+    scenario = result.scalars().first()
+
+    if not scenario:
+        print(f"Asking for update for non existing scenario! {scenario_id}")
+    
+    if close_session:
+        session_db.close()
+    
+    return scenario
+
+
 def initialize_database(engine):
     """Create tables if they don't exist"""
     try:
@@ -53,6 +70,7 @@ def initialize_database(engine):
     except Exception as e:
         logger.info(f"Table creation failed: {e}")
         raise
+
 
 def start_connecting(engine):
     """
