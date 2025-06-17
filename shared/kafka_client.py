@@ -5,6 +5,8 @@ from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 import asyncio
 from .utils import settings
 
+attempt_to_restart = 3
+delay = 5
 
 class KafkaProducerWrapper:
     def __init__(self):
@@ -12,9 +14,6 @@ class KafkaProducerWrapper:
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
-        attempt_to_restart = 3
-        delay = 3
-
         if self._producer is None:
             for _ in range(attempt_to_restart):
                 try:
@@ -31,6 +30,7 @@ class KafkaProducerWrapper:
 
     async def send(self, topic: str, value: dict, key: str = None):
         if not self._producer:
+            print(f"Not producer while asking for send message. Trying to start...")
             await self.start()
         key_bytes = key.encode("utf-8") if key else None
         await self._producer.send_and_wait(topic, value=value, key=key_bytes)
@@ -52,9 +52,6 @@ class KafkaConsumerWrapper:
 
 
     async def start(self):
-        attempt_to_restart = 3
-        delay = 3
-
         if self._consumer is None:
             for _ in range(attempt_to_restart):
                 try:
@@ -78,6 +75,7 @@ class KafkaConsumerWrapper:
         `callback` must be an `async def` that accepts one argument: message.value
         """
         if not self._consumer:
+            print(f"Not consumer while asking for consume. Trying to start...")
             await self.start()
         async for message in self._consumer:
             self.logger.info(f"Consumed message from topic '{self.topic}': {message.value}")

@@ -34,9 +34,9 @@ class OutboxMessage(Base):
 
 class OutboxManager:
     def __init__(self, db_url: str, kafka_producer: KafkaProducerWrapper = None, retry_count: int = 3):
-        self.engine = create_engine(db_url)
+        self.engine = create_engine(db_url, pool_size=20, max_overflow=0)
         Base.metadata.create_all(self.engine) # but seems to be already created in db.py
-        self.Session = sessionmaker(bind=self.engine)
+        self.Session_db = sessionmaker(bind=self.engine, expire_on_commit=False)
 
         self.kafka_producer = kafka_producer
         self.logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class OutboxManager:
 
     async def save_message(self, message: Dict[str, Any], target_service: str = None, from_service: str = None) -> None:
         """Save a message to the outbox table."""
-        session = self.Session()
+        session_db = self.Session_db()
 
         message_id = message.get("message_id", None)
         if not message_id:
@@ -62,15 +62,15 @@ class OutboxManager:
                 from_service=from_service,
                 target_service=target_service,
             )
-            session.add(message)
-            session.commit()
+            session_db.add(message)
+            session_db.commit()
             self.logger.info(f"Saved message to outbox for {target_service}")
         except Exception as e:
-            session.rollback()
+            session_db.rollback()
             self.logger.error(f"Error saving message to outbox: {str(e)}")
             raise
         finally:
-            session.close()
+            session_db.close()
 
     async def start_processing_loop(self, interval_seconds: int = 2) -> None:
         """Start a background task to process pending messages."""
@@ -84,38 +84,39 @@ class OutboxManager:
 
     async def process_pending_messages(self) -> None:
         """Process all pending messages in the outbox."""
-        session = self.Session()
+        print("LOOKING FOR PENDING MESSAGES...")
+        session_db = self.Session_db()
         stmt = select(OutboxMessage).filter(
             OutboxMessage.status == MessageStatus.PENDING
         )
         
-        result = session.execute(stmt)
+        result = session_db.execute(stmt)
         pending_messages = result.scalars().all()
 
         for message in pending_messages:
             # Nested transactions allow partial success (one failed message doesn't block others)
             try:
                 message.status = MessageStatus.PROCESSING
-                await self._process_message(message, session)
+                await self._process_message(message)
+                session_db.commit()
 
             except Exception as e:
                 # Handle errors with nested transaction
-                async with session.begin_nested():
-                    message.retry_count += 1
-                    message.error = str(e)
-                    
-                    if message.retry_count >= self.retry_count:
-                        message.status = MessageStatus.FAILED
-                        message.error = f"Permanent failure: {e.__class__.__name__}"
-                    else:
-                        message.status = MessageStatus.PENDING  # Retry later
+                message.retry_count += 1
+                message.error = str(e)
+                
+                if message.retry_count >= self.retry_count:
+                    message.status = MessageStatus.FAILED
+                    message.error = f"Permanent failure: {e.__class__.__name__}"
+                else:
+                    message.status = MessageStatus.PENDING  # Retry later
                 
                 self.logger.error(f"Error processing message {message.id}: {str(e)}")
             finally:
-                session.close()
+                session_db.close()
 
 
-    async def _process_message(self, message: OutboxMessage, session) -> None:
+    async def _process_message(self, message: OutboxMessage) -> None:
         """Process a message for some service."""
         if not self.kafka_producer:
             raise Exception(f"Kafka producer not configured in {self.__class__.__name__}")
@@ -139,9 +140,6 @@ class OutboxManager:
             await self.kafka_producer.send(topic=topic, value=json.dumps(value))
             message.status = MessageStatus.PROCESSED
             message.processed_at = datetime.datetime.now(tz=settings.time_zone)
-       
         except Exception as e:
             self.logger.error(f"Kafka send failed for {topic}: {str(e)}")
             raise  # Re-raise for retry handling
-        
-        session.commit()

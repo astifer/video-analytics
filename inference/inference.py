@@ -16,7 +16,3 @@ async def run_inference(file: UploadFile = File(...)) -> PredictionResult:
     
     predictions = await get_bb(image)
     return PredictionResult(prediction=predictions)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("inference_service:app", host="0.0.0.0", port=8001, reload=True)

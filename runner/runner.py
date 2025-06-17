@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     session = aiohttp.ClientSession()
 
     # Initialize database session
-    engine = create_engine(settings.db_url)
+    engine = create_engine(settings.db_url, pool_size=20, max_overflow=0)
     Session_db = sessionmaker(bind=engine)
 
     # Initialize Kafka components
@@ -141,7 +141,7 @@ async def send_frame_to_inference(frame):
             res = await response.json()
             if response.status != 200:
                 print(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
-                asyncio.sleep(2)
+                await asyncio.sleep(2)
                 continue
 
             return res
@@ -190,7 +190,3 @@ class AliveResponse(BaseModel):
 async def get_status():
     resp = AliveResponse(status_code=200)
     return resp
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("runner:app", host="0.0.0.0", port=7878, reload=True)

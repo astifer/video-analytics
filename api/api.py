@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     session = aiohttp.ClientSession()
 
     # Initialize database session
-    engine = create_engine(settings.db_url)
+    engine = create_engine(settings.db_url, pool_size=20, max_overflow=0)
     Session_db = sessionmaker(bind=engine)
 
     outbox_manager = OutboxManager(db_url=settings.db_url, kafka_producer=producer, retry_count=3)
@@ -87,7 +87,7 @@ async def ask_orchestrator_actual_status(scenario_id):
             res = await response.json()
             if response.status != 200:
                 print(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
-                asyncio.sleep(1)
+                await asyncio.sleep(1)
                 continue
             return res
 
@@ -149,7 +149,3 @@ async def get_prediction(scenario_id: str):
         return {"status": 200, "details": orchestrator_answer}
     
     return {"status": 404, "details": "Not found"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)

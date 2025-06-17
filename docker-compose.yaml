@@ -25,6 +25,12 @@ services:
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh", "--bootstrap-server",  "kafka:9092", "--topic", "test", "--create", "--if-not-exists", "&&", "kafka-topics.sh", "--bootstrap-server", "kafka:9092", "--topic", "test", "--describe"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
 
   # postgres
   pg_orchestrator:
@@ -39,6 +45,12 @@ services:
     ports:
       - "5433:5432"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ls"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
 
   pg_api:
     image: postgres:15
@@ -79,9 +91,11 @@ services:
       - ./shared:/app/shared
     ports:
       - "1612:1612"
-    depends_on:
+    depends_on: 
+      - pg_orchestrator
+        # condition: service_healthy
       - kafka
-      # - pg_orchestrator
+        # condition: service_healthy
     environment:
       POSTGRES_HOST: pg_orchestrator
       POSTGRES_PORT: 5432

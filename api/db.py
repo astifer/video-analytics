@@ -14,7 +14,7 @@ from shared.database import start_connecting
 if __name__ == "__main__":
     print(f'Start creating init tables. Database url={settings.db_url}')
 
-    engine = create_engine(url=settings.db_url, pool_pre_ping=True)
+    engine = create_engine(url=settings.db_url, pool_pre_ping=True,  pool_size=20, max_overflow=0)
     success = start_connecting(engine)
 
     if not success:

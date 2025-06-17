@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     session = aiohttp.ClientSession()
 
     # Initialize database session
-    engine = create_engine(settings.db_url)
+    engine = create_engine(settings.db_url, pool_size=20, max_overflow=0)
     Session_db = sessionmaker(bind=engine)
 
     # Initialize Kafka components
@@ -165,7 +165,7 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
     )
 
 
-@app.get("/scenario/{scenario_id}/", response_model=Scenario)
+@app.get("/scenario/{scenario_id}/")
 async def get_scenario(scenario_id: str):
     session_db = Session_db()
     scenario = find_scenario(session_db, scenario_id, close_session=True)
@@ -177,7 +177,3 @@ async def get_scenario(scenario_id: str):
 
     return {"status": 200, "details": details}
 
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("orchestrator:app", host="0.0.0.0", port=1612, reload=True)
