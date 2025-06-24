@@ -84,7 +84,7 @@ class OutboxManager:
 
     async def process_pending_messages(self) -> None:
         """Process all pending messages in the outbox."""
-        print("LOOKING FOR PENDING MESSAGES...")
+        print(f"{datetime.datetime.now(tz=settings.time_zone)} LOOKING FOR PENDING MESSAGES...")
         session_db = self.Session_db()
         stmt = select(OutboxMessage).filter(
             OutboxMessage.status == MessageStatus.PENDING

@@ -3,6 +3,46 @@ from typing import Dict
 from pydantic_settings import BaseSettings
 import os
 import pytz
+import asyncio
+import aiohttp
+
+
+async def make_async_post_request_with_retry(
+        session: aiohttp.ClientSession, 
+        url: str, 
+        retry: int = 3, 
+        delay: int = 1, 
+        **kwargs
+    ) -> dict | None:
+    for _ in range(retry):
+        async with session.post(url, **kwargs) as response:
+            res = await response.json()
+            if response.status != 200:
+                print(f"Response from {url} is not OK: {await response.text()}")
+                await asyncio.sleep(delay)
+                continue
+            return res
+
+    return None
+
+
+async def make_async_get_request_with_retry(
+        session: aiohttp.ClientSession, 
+        url: str, 
+        retry: int = 3, 
+        delay: int = 1, 
+        **kwargs
+    ) -> dict | None:
+    for _ in range(retry):
+        async with session.post(url, **kwargs) as response:
+            res = await response.json()
+            if response.status != 200:
+                print(f"Response from {url} is not OK: {await response.text()}")
+                await asyncio.sleep(delay)
+                continue
+            return res
+
+    return None
 
 def get_urls() -> Dict[str, str]:
     with open('/app/shared/public_urls.yaml', 'r') as f:

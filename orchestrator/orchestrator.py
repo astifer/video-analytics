@@ -6,21 +6,23 @@ from uuid import uuid4
 
 from shared.kafka_client import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.scenario_models import ScenarioUpdate, ScenarioStatus
-from shared.database import Scenario, find_scenario
 from shared.status_models import is_transition_allowed
+
+from shared.database import Scenario, find_scenario
 
 from shared.utils import settings
 from shared.transactional_outbox import OutboxManager
 
+from tools import process_messages_from_runner
+
 from contextlib import asynccontextmanager
+import random
 
 import aiohttp
 import asyncio
 
 
-producer = KafkaProducerWrapper()
-
-api_consumer = KafkaConsumerWrapper(topic='api-to-orchestrator', group_id="orchestrator")
+producer = KafkaProducerWrapper(is_idepmotent=True)
 runner_consumer = KafkaConsumerWrapper(topic='runner-to-orchestrator', group_id="orchestrator")
 
 @asynccontextmanager
@@ -36,7 +38,6 @@ async def lifespan(app: FastAPI):
 
     # Initialize Kafka components
     await producer.start()
-    await api_consumer.start()
     await runner_consumer.start()
 
     # Initialize Outbox components
@@ -44,15 +45,11 @@ async def lifespan(app: FastAPI):
     
     # Start the outbox processing loop
     asyncio.create_task(outbox_manager.start_processing_loop())
-
-    # start consuming
-    asyncio.create_task(api_consumer.consume(process_messages_from_api))
     asyncio.create_task(runner_consumer.consume(process_messages_from_runner))
-    
+
     yield
 
     await producer.stop()
-    await api_consumer.stop()
     await runner_consumer.stop()
 
     await session.close()
@@ -63,85 +60,57 @@ RUNNER_URL = public_urls.get("RUNNER_URL")
 
 app = FastAPI(title="Orchestrator Service", lifespan=lifespan)
 
-async def process_messages_from_api(message_value: dict):
-    """
-    Received message from api: {"message_id": "2276172c487111f080316619d9cb34fb", "payload": {"scenario_id": "22761a74487111f080316619d9cb34fb", "target": "init_scenario"}, "created_at": "2025-06-13T16:09:27.366037", "processed_at": "2025-06-13T19:12:06.336889+03:00"}
-    """
-    print(f"Received message from api: {message_value}")
-    payload =  message_value.get("payload", {})
-    target = payload.get("target")
-    scenario_id = payload.get("scenario_id")
 
-    if target == 'init_scenario':
-        await create_scenario(scenario_id)
-
-    elif target == 'update_scenario':
-        update = payload.get("update")
-        if isinstance(update, dict):
-            try:
-                update = ScenarioUpdate(**update)
-                await update_scenario(scenario_id, update)
-            except Exception as e:
-                print(f"Cannot cast update to ScenarioUpdate from `update` field in message payload")
-        else:
-            print(f"`update` field in message payload is not a dict after deserialiser")
-
-
-async def process_messages_from_runner(message_value):
-    print(f"Received message from runner: {message_value}")
-
-
-async def create_scenario(scenario_id: str = None):
-    if scenario_id is None:
-        scenario_id = str(uuid4())
-
-    scenario = Scenario(id=scenario_id, status=ScenarioStatus.INIT_STARTUP, data={})
+@app.post("/scenario/")
+async def create_scenario():
+    scenario_id = str(uuid4())
     session_db = Session_db()
+
+
+    scenario = Scenario( 
+        id=random.randint(10**4, 10**9),
+        scenario_id=scenario_id, 
+        status=ScenarioStatus.INIT_STARTUP)
+    
     session_db.add(scenario)
-    session_db.commit()
     session_db.close()
 
+    message = {
+        "payload": {"scenario_id": scenario_id, "status": ScenarioStatus.INIT_STARTUP}
+    }
     await outbox_manager.save_message(
-        payload={"scenario_id": scenario_id, "status": scenario.status},
+        message=message,
+        from_service='orchestrator',
         target_service='api'
     )
 
+    return {"status": 200, "details": {"status": ScenarioStatus.INIT_STARTUP, "scenario_id": scenario_id}}
 
+@app.post("/scenario/{scenario_id}/")
 async def update_scenario(scenario_id: str, update: ScenarioUpdate):
+
     session_db = Session_db()
     scenario = find_scenario(session_db, scenario_id, close_session=False)
 
     if not scenario:
         print(f"Asking for update for non existing scenario! {scenario_id}")
-        return
+        raise HTTPException(status_code=404, detail="Scenario not found")
     
     current_status = scenario.status
     new_status = update.new_status
 
     if new_status == current_status:
         print(f"Scenario already has this status! {scenario_id}")
-        return
+        raise HTTPException(status_code=302, detail=f"Scenario already has this status")
     
     if not is_transition_allowed(current_status, new_status):
         print(f"Transition from {current_status} to {new_status} is not allowed.")
-        return
+        raise HTTPException(status_code=400, detail=f"Transition from {current_status} to {new_status} is not allowed")
     
-    # Update scenario status
     scenario.status = new_status
     session_db.commit()
     session_db.close()
 
-    await outbox_manager.save_message(
-        message={
-            "payload": {
-                "scenario_id": scenario_id,
-                "target": "scenario_updated",
-                "status": new_status
-            }
-        },
-        target_service='api',
-        from_service='orchestrator'
-    )
 
     message = { 
         "payload": { 
@@ -162,7 +131,9 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         message=message,
         target_service='runner',
         from_service='orchestrator'
-    )
+    )  
+
+    return {"status": 200, "details": {"scenario_id": scenario_id, "status": scenario.status}}
 
 
 @app.get("/scenario/{scenario_id}/")

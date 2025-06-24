@@ -18,6 +18,8 @@ from shared.database import Scenario, find_scenario
 from shared.utils import settings
 from contextlib import asynccontextmanager
 
+from service import plot_boxes, frame_stream
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -74,8 +76,9 @@ async def process_messages_from_orchestrator(message_value: dict):
     else:
         print(f"Runner got message with not suitable status: {status}. Runner want IN_STARTUP_PROCESSING or ACTIVE statuses. {scenario_id=}")
 
+
 async def run_preprocess_scenario(scenario_id):
-    frame = await frame_stream(STREAM_URL)
+    frame = await frame_stream(stream_url=settings.public_urls.get("STREAM_URL"))
     session_db = Session_db()
     scenario = Scenario(
         scenario_id=scenario_id,
@@ -85,6 +88,7 @@ async def run_preprocess_scenario(scenario_id):
     session_db.add(scenario)
     session_db.commit()
     session_db.close()
+
 
 async def run_active_scenario(scenario_id):
     session_db = Session_db()
@@ -101,6 +105,8 @@ async def run_active_scenario(scenario_id):
         print(f"Not found frame for this scenario. {scenario_id=}")
         return
     inference_result = await send_frame_to_inference(frame)
+    # end
+
     scenario.payload['inference_result'] = inference_result
     scenario.processed_at = datetime.datetime.now(tz=settings.time_zone)
     session_db.commit()
@@ -121,6 +127,7 @@ async def run_active_scenario(scenario_id):
     )
 
 
+
 async def send_frame_to_inference(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     pil_image = Image.fromarray(rgb_frame)
@@ -136,6 +143,14 @@ async def send_frame_to_inference(frame):
         filename='frame.jpg',
         content_type='image/jpeg'
     )
+    form = aiohttp.FormData()
+    form.add_field(
+        name='file',
+        value=buf,
+        filename='frame.jpg',
+        content_type='image/jpeg'
+    )
+    INFERENCE_URL = settings.public_urls.get("INFERENCE_URL")
     for _ in range(3):
         async with session.post(f"{INFERENCE_URL}/inference/", data=form) as response:
             res = await response.json()
@@ -145,42 +160,15 @@ async def send_frame_to_inference(frame):
                 continue
 
             return res
-
-
-async def frame_stream(stream_url: str):
-    # кажется тут упираемся в синхронность и ждем пока получим кадр
-    cap = cv2.VideoCapture(stream_url)
-
-    if not cap.isOpened():
-        raise RuntimeError(f"Failed to open video stream: {stream_url}")
-
-    try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                continue  # Retry
-            return frame
-    finally:
-        cap.release()
-
-def plot_boxes(frame, predictions):
-    for el in predictions:
-        label = el['label']
-        x, y, x2, y2 = el['bb']
-
-        cv2.rectangle(img=frame, pt1=(x, y), pt2=(x2, y2), color=(255, 0, 0), thickness=2)
-
-        cv2.putText( 
-                img=frame, 
-                text=label, 
-                org=(x, y + 20),
-                fontFace=2,
-                fontScale=0.5,
-                color=(0,0,0),
-                thickness=2
-                )
         
-    return frame
+    # or ...
+    outbox_manager.save_message(
+        message={"target": "inference"},
+        from_service="runner",
+        target_service="inference"
+    )
+    
+
 
 
 class AliveResponse(BaseModel):

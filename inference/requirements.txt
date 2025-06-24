@@ -15,3 +15,4 @@ aiokafka
 pyyaml
 pydantic-settings
 pytz
+kafka-python

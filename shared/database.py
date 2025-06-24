@@ -38,7 +38,7 @@ class Scenario(Base):
     __tablename__ = 'scenarios'
 
     id = Column(Integer, primary_key=True)
-    scenario_id = Column(Integer, nullable=False)
+    scenario_id = Column(String, nullable=False)
     payload = Column(JSON, default={}) # all info we needed, eg `result` or `type`
     status = Column(SQLEnum(ScenarioStatus), nullable=False, default=ScenarioStatus.INIT_STARTUP)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.now(tz=settings.time_zone))

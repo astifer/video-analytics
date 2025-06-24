@@ -1,7 +1,7 @@
 #!/bin/bash
 
 until PGPASSWORD=$POSTGRES_PASSWORD psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\q'; do
-  >&2 echo "Postgres is unavailable - sleeping"
+  >&2 echo "Postgres is unavailable on $POSTGRES_HOST:$POSTGRES_PORT - sleeping.."
   sleep 2
 done
 
