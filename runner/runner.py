@@ -7,6 +7,7 @@ import aiohttp
 import asyncio
 import datetime
 
+import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -64,6 +65,12 @@ async def process_messages_from_orchestrator(message_value: dict):
     Receined message from orchestrator: {"message_id": "2276172c487111f080316619d9cb34fb", "payload": {"scenario_id": "22761a74487111f080316619d9cb34fb", "target": "init_scenario"}, "created_at": "2025-06-13T16:09:27.366037", "processed_at": "2025-06-13T19:12:06.336889+03:00"}
     """
     print(f"Received message from orchestrator: {message_value}")
+    if isinstance(message_value, str):
+        try:
+            message_value = json.loads(message_value)
+        except:
+            print(f"Error while parsiing message from orchestrator {message_value=}")
+
     target = message_value.get("target")
     payload =  message_value.get("payload", {})
     scenario_id = payload.get("scenario_id")
@@ -108,7 +115,8 @@ async def run_active_scenario(scenario_id):
     # end
 
     scenario.payload['inference_result'] = inference_result
-    scenario.processed_at = datetime.datetime.now(tz=settings.time_zone)
+    processed_at = datetime.datetime.now(tz=settings.time_zone)
+    scenario.processed_at = processed_at
     session_db.commit()
     session_db.close()
 
@@ -117,9 +125,9 @@ async def run_active_scenario(scenario_id):
             "target": "inference_result",
             "payload": {
                 "scenario_id": scenario_id,
-                "inference_result": scenario.payload,
+                "inference_result": payload,
                 "status": ScenarioStatus.ACTIVE,
-                "processed_at": scenario.processed_at
+                "processed_at": processed_at
             }
         },
         from_service="runner",

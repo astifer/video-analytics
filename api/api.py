@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
+import json
 import uuid
 from typing import Dict, Any
 from contextlib import asynccontextmanager
@@ -46,11 +46,23 @@ app = FastAPI(title="Video Analytics API", lifespan=lifespan)
 
 async def consume_messages_from_orchestrator(message_value):
     print(f"Received message: {message_value}")
+    if isinstance(message_value, str):
+        try:
+            message_value = json.loads(message_value)
+        except:
+            print(f"Error while parsiing message from orchestrator {message_value=}")
 
     payload =  message_value.get("payload", {})
     scenario_id = payload.get("scenario_id")
 
-    scenarios[scenario_id].payload = payload
+    scn = LocalScenario( 
+        scenario_id=scenario_id, 
+        status=payload.get("status", {}),
+        payload=payload,
+        prediction=payload.get("prediction", {})    
+    )
+    scenarios[scenario_id] = scn
+    print(f"Succecfully get message from orchestrator and update scenario {scenario_id}")
 
 
 @app.post("/scenario/")
@@ -68,7 +80,9 @@ async def create_scenario():
 
 @app.post("/scenario/{scenario_id}/")
 async def update_scenario(scenario_id: str, update: ScenarioUpdate):
-
+    '''
+    init_startup, in_startup_processing, active, init_shutdown, in_shutdown_processing, inactive
+    '''
     response = await make_async_post_request_with_retry(
         session=session,
         url=f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/",

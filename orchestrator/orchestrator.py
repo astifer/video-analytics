@@ -66,13 +66,13 @@ async def create_scenario():
     scenario_id = str(uuid4())
     session_db = Session_db()
 
-
     scenario = Scenario( 
         id=random.randint(10**4, 10**9),
         scenario_id=scenario_id, 
         status=ScenarioStatus.INIT_STARTUP)
     
     session_db.add(scenario)
+    session_db.commit()
     session_db.close()
 
     message = {
@@ -133,7 +133,7 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         from_service='orchestrator'
     )  
 
-    return {"status": 200, "details": {"scenario_id": scenario_id, "status": scenario.status}}
+    return {"status": 200, "details": {"scenario_id": scenario_id, "status": new_status}}
 
 
 @app.get("/scenario/{scenario_id}/")
