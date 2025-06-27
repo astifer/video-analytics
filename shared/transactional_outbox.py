@@ -97,8 +97,7 @@ class OutboxManager:
             # Nested transactions allow partial success (one failed message doesn't block others)
             try:
                 message.status = MessageStatus.PROCESSING
-                await self._process_message(message)
-                session_db.commit()
+                message = await self._process_message(message)
 
             except Exception as e:
                 # Handle errors with nested transaction
@@ -110,10 +109,12 @@ class OutboxManager:
                     message.error = f"Permanent failure: {e.__class__.__name__}"
                 else:
                     message.status = MessageStatus.PENDING  # Retry later
-                
+
                 self.logger.error(f"Error processing message {message.id}: {str(e)}")
-            finally:
-                session_db.close()
+            
+            session_db.commit()
+
+        session_db.close()
 
 
     async def _process_message(self, message: OutboxMessage) -> None:
@@ -140,6 +141,7 @@ class OutboxManager:
             await self.kafka_producer.send(topic=topic, value=json.dumps(value))
             message.status = MessageStatus.PROCESSED
             message.processed_at = datetime.datetime.now(tz=settings.time_zone)
+            return message
         except Exception as e:
             self.logger.error(f"Kafka send failed for {topic}: {str(e)}")
             raise  # Re-raise for retry handling

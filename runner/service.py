@@ -43,8 +43,9 @@ def plot_boxes(frame, predictions):
 
 async def frame_stream(stream_url: str):
     # кажется тут упираемся в синхронность и ждем пока получим кадр
+    print("Start getting frame from stream")
     cap = cv2.VideoCapture(stream_url)
-
+    frame = None
     if not cap.isOpened():
         raise RuntimeError(f"Failed to open video stream: {stream_url}")
 
@@ -52,7 +53,10 @@ async def frame_stream(stream_url: str):
         while True:
             ret, frame = cap.read()
             if not ret:
+                print("Retry to get frame from stream")
                 continue  # Retry
-            return frame
+
+            print("Succefully got frame")
+            return frame.tolist()
     finally:
         cap.release()

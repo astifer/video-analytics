@@ -88,10 +88,12 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         url=f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/",
         json=update.model_dump()
     )
-    if response:
+    if response.get("status") == 200:
         return {"status": 200, "scenario_id": scenario_id, "new_status": update.new_status}
+    elif response.get("status") == 500:
+        return {"status": 501, "details": "Server temporaly unavailable"}
     else:
-        return {"status": 501}
+        return response
 
 
 @app.get("/scenario/{scenario_id}/")

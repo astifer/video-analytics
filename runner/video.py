@@ -4,9 +4,8 @@ from transformers import YolosImageProcessor, YolosForObjectDetection
 import torch
 import cv2
 
-from shared.utils import settings
 
-STREAM_URL = settings.public_urls.get("STREAM_URL", "https://s46.ipcamlive.com/streams/2eulqgccb8zksexmj/stream.m3u8")
+STREAM_URL = "https://hd-auth.skylinewebcams.com/live.m3u8?a=7i1vdpe7ilhqo14c0ve2mdiqr7"
 
 # Open the video capture
 cap = cv2.VideoCapture(STREAM_URL)

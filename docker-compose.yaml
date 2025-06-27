@@ -133,17 +133,19 @@ services:
       - pg_runner
     environment:
       POSTGRES_HOST: pg_runner
+      POSTGRES_PORT: 5432
       POSTGRES_DB: runner_db
       POSTGRES_USER: runner_user
       POSTGRES_PASSWORD: runner_pass
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   inference:
+    container_name: inference_service
     build:
       context: ./inference
       dockerfile: Dockerfile
     deploy:
-        replicas: 3
+        replicas: 1
     depends_on:
       - kafka
     networks:

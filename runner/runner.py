@@ -3,6 +3,7 @@ from PIL import Image
 import io
 from fastapi import FastAPI
 from pydantic import BaseModel
+import numpy as np
 import aiohttp
 import asyncio
 import datetime
@@ -16,7 +17,7 @@ from shared.status_models import ScenarioStatus
 from shared.transactional_outbox import OutboxManager
 from shared.database import Scenario, find_scenario
 
-from shared.utils import settings
+from shared.utils import settings, make_async_post_request_with_retry
 from contextlib import asynccontextmanager
 
 from service import plot_boxes, frame_stream
@@ -77,11 +78,13 @@ async def process_messages_from_orchestrator(message_value: dict):
     status = payload.get("status")
 
     if status == ScenarioStatus.IN_STARTUP_PROCESSING or target == "preprocess":
-        await run_preprocess_scenario()
+        await run_preprocess_scenario(scenario_id)
     elif status == ScenarioStatus.ACTIVE or target == "inference":
         await run_active_scenario(scenario_id)
     else:
         print(f"Runner got message with not suitable status: {status}. Runner want IN_STARTUP_PROCESSING or ACTIVE statuses. {scenario_id=}")
+
+    print("Succesfully process mesages from orchestrator")
 
 
 async def run_preprocess_scenario(scenario_id):
@@ -111,6 +114,13 @@ async def run_active_scenario(scenario_id):
     if not frame:
         print(f"Not found frame for this scenario. {scenario_id=}")
         return
+    if isinstance(frame, list):
+        frame = np.array(frame)
+
+    if any(el == 4 for el in frame.shape):
+        print("Dimension of frame is 4")
+        return
+    
     inference_result = await send_frame_to_inference(frame)
     # end
 
@@ -136,7 +146,7 @@ async def run_active_scenario(scenario_id):
 
 
 
-async def send_frame_to_inference(frame):
+async def send_frame_to_inference(frame: np.ndarray):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     pil_image = Image.fromarray(rgb_frame)
 
@@ -159,8 +169,15 @@ async def send_frame_to_inference(frame):
         content_type='image/jpeg'
     )
     INFERENCE_URL = settings.public_urls.get("INFERENCE_URL")
+
+    # res = make_async_post_request_with_retry(
+    #     url=f"{INFERENCE_URL}/inference/",
+    #     data=form
+    # )
+    # return res
+
     for _ in range(3):
-        async with session.post(f"{INFERENCE_URL}/inference/", data=form) as response:
+        async with session.post( url=f"{INFERENCE_URL}/inference/", data=form) as response:
             res = await response.json()
             if response.status != 200:
                 print(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
@@ -168,13 +185,6 @@ async def send_frame_to_inference(frame):
                 continue
 
             return res
-        
-    # or ...
-    outbox_manager.save_message(
-        message={"target": "inference"},
-        from_service="runner",
-        target_service="inference"
-    )
     
 
 
