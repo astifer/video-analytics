@@ -155,3 +155,17 @@ services:
       - ./shared:/app/shared
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  test:
+    container_name: test-container
+    build:
+      context: ./tests
+    command: pytest tests/
+    depends_on:
+      - api
+      - runner
+      - inference
+      - orchestrator
+    
+    volumes:
+      - ./shared:/app/shared

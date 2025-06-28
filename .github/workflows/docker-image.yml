@@ -14,5 +14,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker compose up --build
+
+    - name: Set up Docker Compose
+      run: |
+        docker compose version || sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose
+
+    - name: Build and run all services + test container
+      run: docker compose up --build --abort-on-container-exit test
+
+    - name: Shutdown Docker containers
+      if: always()
+      run: docker compose down --volumes
+  

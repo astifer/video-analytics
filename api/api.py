@@ -99,10 +99,6 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
 @app.get("/scenario/{scenario_id}/")
 async def get_scenario(scenario_id: str):
 
-    # scenario = scenarios.get(scenario_id)
-    # if scenario:
-    #     return {"status": 200, "details": {"status": scenario.status, "scenario_id": scenario_id, "payload": scenario.payload}}
-
     orchestrator_answer = await make_async_get_request_with_retry(
         session=session,
         url=f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/"
@@ -116,10 +112,6 @@ async def get_scenario(scenario_id: str):
 
 @app.get("/prediction/{scenario_id}/")
 async def get_prediction(scenario_id: str):
-
-    # scenario = scenarios.get(scenario_id)
-    # if scenario:
-    #     return {"status": 200, "details": {"status": scenario.status, "scenario_id": scenario_id, "payload": scenario.payload}}
 
     orchestrator_answer = await make_async_get_request_with_retry(
         session=session,
