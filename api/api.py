@@ -117,7 +117,9 @@ async def get_prediction(scenario_id: str):
         session=session,
         url=f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/"
     )
+    preds = orchestrator_answer.get("details", {}).get("payload", {})
+
     if orchestrator_answer:
-        return {"status": 200, "details": orchestrator_answer}
+        return {"status": 200, "prediction": preds}
     
     return {"status": 404, "details": "Not found"}
