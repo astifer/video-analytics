@@ -132,9 +132,6 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         raise HTTPException(status_code=400, detail=f"Transition from {current_status} to {new_status} is not allowed")
     
     scenario.status = new_status
-    session_db.commit()
-    session_db.close()
-
 
     message = { 
         "payload": { 
@@ -146,17 +143,30 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate):
         print(f"Sending to runner with ask for preprocess")
         message['payload']['target'] = "preprocess"
         message['target'] = "preprocess"
-    if new_status == ScenarioStatus.ACTIVE:
+
+        await outbox_manager.save_message(
+            message=message,
+            target_service='runner',
+            from_service='orchestrator'
+        )
+    elif new_status == ScenarioStatus.ACTIVE:
         print(f"Sending to runner with ask for inference")
         message['payload']['target'] = "inference"
         message['target'] = "inference"
+        await outbox_manager.save_message(
+            message=message,
+            target_service='runner',
+            from_service='orchestrator'
+        )
 
-    await outbox_manager.save_message(
-        message=message,
-        target_service='runner',
-        from_service='orchestrator'
-    )  
+    elif new_status == ScenarioStatus.INIT_SHUTDOWN:
+        print("Start to deleting scenario...")
+        scenario.status = ScenarioStatus.INIT_SHUTDOWN
+        scenario.payload = {}
 
+
+    session_db.commit()
+    session_db.close()
     return {"status": 200, "details": {"scenario_id": scenario_id, "status": new_status}}
 
 
