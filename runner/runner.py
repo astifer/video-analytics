@@ -131,6 +131,7 @@ async def run_active_scenario(scenario_id):
             "target": "inference_result",
             "payload": {
                 "scenario_id": scenario_id,
+                "target": "inference_result",
                 "inference_result": inference_result,
                 "status": ScenarioStatus.ACTIVE,
                 "processed_at": processed_at

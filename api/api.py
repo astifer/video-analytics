@@ -105,7 +105,7 @@ async def get_scenario(scenario_id: str):
 
     orchestrator_answer = await make_async_get_request_with_retry(
         session=session,
-        url=f"{ORCHESTRATOR_URL}/scenario/{scenario_id}"
+        url=f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/"
     )
     if orchestrator_answer:
         return {"status": 200, "details": orchestrator_answer}
@@ -123,7 +123,7 @@ async def get_prediction(scenario_id: str):
 
     orchestrator_answer = await make_async_get_request_with_retry(
         session=session,
-        url=f"{ORCHESTRATOR_URL}/scenario/{scenario_id}"
+        url=f"{ORCHESTRATOR_URL}/scenario/{scenario_id}/"
     )
     if orchestrator_answer:
         return {"status": 200, "details": orchestrator_answer}

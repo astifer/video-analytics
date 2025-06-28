@@ -5,9 +5,12 @@ from typing import List
 from pydantic import BaseModel
 
 for i in range(3):
-    print(f"Attempt {i+1}. Trying to downlaoad model...")
-    model = YolosForObjectDetection.from_pretrained('hustvl/yolos-tiny')
-    image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
+    print(f"Attempt {i+1}/3. Trying to downlaoad model...")
+    try:
+        model = YolosForObjectDetection.from_pretrained('hustvl/yolos-tiny')
+        image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
+    except Exception as e:
+        print(f"Error while download model {e}")
 
 class PredictedObject(BaseModel):
     label: str

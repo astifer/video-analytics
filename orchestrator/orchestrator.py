@@ -66,21 +66,22 @@ async def process_messages_from_runner(message_value):
     if isinstance(message_value, str):
         message_value = json.loads(message_value)
 
-    target = message_value.get("target")
     payload = message_value.get('payload')
+    target = message_value.get("target") or payload.get("target")
+    scenario_id = payload.get("scenario_id")
+
+    print(f"{scenario_id=}, {target=}")
 
     if target == 'inference_result':
-        message = {
-            "payload": { 
-                "scenario_id": payload.get("scenario_id"),
-                "prediction": payload.get("inference_result")
-                }
-        }
-        outbox_manager.save_message(
-            message, 
-            target_service='api', 
-            from_service='orchestrator'
-        )
+        print(f"Inference post result for {scenario_id}")
+        session_db = Session_db()
+        scenario = find_scenario(session_db, scenario_id, close_session=False)
+        if scenario:
+            scenario.payload = payload.get("inference_result")
+        
+        session_db.commit()
+        session_db.close()
+        print(f"Update scenario {scenario_id} in db")
         
 
 

@@ -34,7 +34,7 @@ async def make_async_get_request_with_retry(
         **kwargs
     ) -> dict | None:
     for _ in range(retry):
-        async with session.post(url, **kwargs) as response:
+        async with session.get(url, **kwargs) as response:
             res = await response.json()
             if response.status == 500:
                 print(f"Response from {url} is not OK: {await response.text()}")
