@@ -9,10 +9,10 @@ API = settings.public_urls.get("API_URL")
 
 @pytest.mark.asyncio
 async def test_pipeline_flow():
-    asyncio.sleep(20)
+    await asyncio.sleep(20)
     async with aiohttp.ClientSession() as session:
         # 1. Создать сценарий
-        asyncio.sleep(3)
+        await asyncio.sleep(3)
         create_url = f"http://{API}/scenario/"
 
         async with session.post(create_url) as response:
@@ -22,7 +22,7 @@ async def test_pipeline_flow():
 
 
         # 2. Запустить обработку
-        asyncio.sleep(3)
+        await asyncio.sleep(3)
         headers = {
         "accept": "application/json",
         "Content-Type": "application/json"
@@ -40,7 +40,7 @@ async def test_pipeline_flow():
 
 
         # bad request
-        asyncio.sleep(3)
+        await asyncio.sleep(3)
         json_data['new_status'] = "inactive"
 
         async with aiohttp.ClientSession() as session:
@@ -55,7 +55,7 @@ async def test_pipeline_flow():
 
 
         # 3. Запустить сценарий
-        asyncio.sleep(3)
+        await asyncio.sleep(3)
         headers = {
         "accept": "application/json",
         "Content-Type": "application/json"
@@ -77,7 +77,7 @@ async def test_pipeline_flow():
                 print("Response:", await response.text())
 
         # 4. Получить предсказания
-        asyncio.sleep(10)
+        await asyncio.sleep(10)
 
         headers = {
         "accept": "application/json",

@@ -1,3 +1,7 @@
 pytest
 pytest-asyncio
 aiohttp
+pyyaml
+pydantic
+pydantic-settings
+pytz
