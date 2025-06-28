@@ -13,10 +13,10 @@ from shared.database import Scenario, find_scenario
 from shared.utils import settings
 from shared.transactional_outbox import OutboxManager
 
-from tools import process_messages_from_runner
 
 from contextlib import asynccontextmanager
 import random
+import json
 
 import aiohttp
 import asyncio
@@ -59,6 +59,29 @@ public_urls = settings.public_urls
 RUNNER_URL = public_urls.get("RUNNER_URL")
 
 app = FastAPI(title="Orchestrator Service", lifespan=lifespan)
+
+
+async def process_messages_from_runner(message_value):
+    print(f"Received message from runner: {message_value}")
+    if isinstance(message_value, str):
+        message_value = json.loads(message_value)
+
+    target = message_value.get("target")
+    payload = message_value.get('payload')
+
+    if target == 'inference_result':
+        message = {
+            "payload": { 
+                "scenario_id": payload.get("scenario_id"),
+                "prediction": payload.get("inference_result")
+                }
+        }
+        outbox_manager.save_message(
+            message, 
+            target_service='api', 
+            from_service='orchestrator'
+        )
+        
 
 
 @app.post("/scenario/")

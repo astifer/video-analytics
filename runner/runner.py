@@ -115,17 +115,13 @@ async def run_active_scenario(scenario_id):
         print(f"Not found frame for this scenario. {scenario_id=}")
         return
     if isinstance(frame, list):
-        frame = np.array(frame)
+        frame = np.array(frame,  dtype=np.uint8)
 
-    if any(el == 4 for el in frame.shape):
-        print("Dimension of frame is 4")
-        return
-    
     inference_result = await send_frame_to_inference(frame)
     # end
 
     scenario.payload['inference_result'] = inference_result
-    processed_at = datetime.datetime.now(tz=settings.time_zone)
+    processed_at = datetime.datetime.now(tz=settings.time_zone).isoformat()
     scenario.processed_at = processed_at
     session_db.commit()
     session_db.close()
@@ -135,7 +131,7 @@ async def run_active_scenario(scenario_id):
             "target": "inference_result",
             "payload": {
                 "scenario_id": scenario_id,
-                "inference_result": payload,
+                "inference_result": inference_result,
                 "status": ScenarioStatus.ACTIVE,
                 "processed_at": processed_at
             }
@@ -147,7 +143,15 @@ async def run_active_scenario(scenario_id):
 
 
 async def send_frame_to_inference(frame: np.ndarray):
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    try:
+        print(frame.shape)
+        print(frame)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    except Exception as e:
+        print(f"cannot cast frame into cv2 object {type(frame)}, {frame.shape}, {e}")
+        return {}
+    
+    print("collecting file to send to inference...")
     pil_image = Image.fromarray(rgb_frame)
 
     buf = io.BytesIO()
@@ -170,15 +174,11 @@ async def send_frame_to_inference(frame: np.ndarray):
     )
     INFERENCE_URL = settings.public_urls.get("INFERENCE_URL")
 
-    # res = make_async_post_request_with_retry(
-    #     url=f"{INFERENCE_URL}/inference/",
-    #     data=form
-    # )
-    # return res
-
+    print("Collected! Sending to inference...")
     for _ in range(3):
         async with session.post( url=f"{INFERENCE_URL}/inference/", data=form) as response:
             res = await response.json()
+            print(f"Got response {res}")
             if response.status != 200:
                 print(f"[send_frame_to_inference] response from INFERENCE is not OK: {await response.text()}")
                 await asyncio.sleep(2)

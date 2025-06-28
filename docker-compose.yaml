@@ -118,11 +118,12 @@ services:
 
 
   runner:
+    container_name: runner_service
     build:
       context: ./runner
       dockerfile: Dockerfile
     deploy:
-        replicas: 3
+        replicas: 1
     networks:
       - app-tier
     volumes:
