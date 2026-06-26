@@ -6,7 +6,7 @@ networks:
 
 services:
   kafka:
-    image: bitnami/kafka:4.0
+    image: soldevelo/kafka:4.0
     container_name: kafka
     networks:
       - app-tier
